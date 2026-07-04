@@ -30,7 +30,7 @@ import { Chart, Tooltip } from 'chart.js';
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap';
 import { isUUID } from 'class-validator';
 import { differenceInDays, max } from 'date-fns';
-import { orderBy } from 'lodash';
+import { orderBy, round } from 'lodash';
 import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 import OpenColor from 'open-color';
 
@@ -207,6 +207,10 @@ export class GfTreemapChartComponent
       datasets: [
         {
           backgroundColor: (context: GfTreemapScriptableContext) => {
+            if (!context.raw) {
+              return undefined;
+            }
+
             let annualizedNetPerformancePercent =
               getAnnualizedPerformancePercent({
                 daysInMarket: differenceInDays(
@@ -221,9 +225,10 @@ export class GfTreemapChartComponent
                 )
               }).toNumber();
 
-            // Round to 2 decimal places
-            annualizedNetPerformancePercent =
-              Math.round(annualizedNetPerformancePercent * 100) / 100;
+            annualizedNetPerformancePercent = round(
+              annualizedNetPerformancePercent,
+              2
+            );
 
             const { backgroundColor } = this.getColor({
               annualizedNetPerformancePercent,
@@ -238,6 +243,10 @@ export class GfTreemapChartComponent
           labels: {
             align: 'left',
             color: (context: GfTreemapScriptableContext) => {
+              if (!context.raw) {
+                return undefined;
+              }
+
               let annualizedNetPerformancePercent =
                 getAnnualizedPerformancePercent({
                   daysInMarket: differenceInDays(
@@ -252,9 +261,10 @@ export class GfTreemapChartComponent
                   )
                 }).toNumber();
 
-              // Round to 2 decimal places
-              annualizedNetPerformancePercent =
-                Math.round(annualizedNetPerformancePercent * 100) / 100;
+              annualizedNetPerformancePercent = round(
+                annualizedNetPerformancePercent,
+                2
+              );
 
               const { fontColor } = this.getColor({
                 annualizedNetPerformancePercent,
@@ -267,11 +277,10 @@ export class GfTreemapChartComponent
             display: true,
             font: [{ size: 16 }, { lineHeight: 1.5, size: 14 }],
             formatter: ({ raw }: GfTreemapScriptableContext) => {
-              // Round to 4 decimal places
-              let netPerformancePercentWithCurrencyEffect =
-                Math.round(
-                  raw._data.netPerformancePercentWithCurrencyEffect * 10000
-                ) / 10000;
+              let netPerformancePercentWithCurrencyEffect = round(
+                raw._data.netPerformancePercentWithCurrencyEffect,
+                4
+              );
 
               if (Math.abs(netPerformancePercentWithCurrencyEffect) === 0) {
                 netPerformancePercentWithCurrencyEffect = Math.abs(
