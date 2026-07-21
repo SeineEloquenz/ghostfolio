@@ -5,6 +5,7 @@ import {
 } from '@ghostfolio/client/services/settings-storage.service';
 import { UserService } from '@ghostfolio/client/services/user/user.service';
 import { WebAuthnService } from '@ghostfolio/client/services/web-authn.service';
+import { E_MAIL_LINE_BREAK } from '@ghostfolio/common/config';
 import { ConfirmationDialogType } from '@ghostfolio/common/enums';
 import { downloadAsFile } from '@ghostfolio/common/helper';
 import { User } from '@ghostfolio/common/interfaces';
@@ -20,11 +21,12 @@ import {
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
   DestroyRef,
+  inject,
   OnInit
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  FormBuilder,
+  NonNullableFormBuilder,
   FormsModule,
   ReactiveFormsModule,
   Validators
@@ -69,20 +71,22 @@ import { catchError } from 'rxjs/operators';
   templateUrl: './user-account-settings.html'
 })
 export class GfUserAccountSettingsComponent implements OnInit {
-  public appearancePlaceholder = $localize`Auto`;
-  public baseCurrency: string;
-  public currencies: string[] = [];
-  public deleteOwnUserForm = this.formBuilder.group({
+  protected readonly appearancePlaceholder = $localize`Auto`;
+  protected readonly baseCurrency: string;
+  protected closeUserAccountMailHref: string;
+  protected readonly currencies: string[] = [];
+  protected readonly deleteOwnUserForm = inject(NonNullableFormBuilder).group({
     accessToken: ['', Validators.required]
   });
-  public hasPermissionToDeleteOwnUser: boolean;
-  public hasPermissionToUpdateViewMode: boolean;
-  public hasPermissionToUpdateUserSettings: boolean;
-  public isAccessTokenHidden = true;
-  public isFingerprintSupported = this.doesBrowserSupportAuthn();
-  public isWebAuthnEnabled: boolean;
-  public language = document.documentElement.lang;
-  public locales = [
+  protected hasPermissionToDeleteOwnUser: boolean;
+  protected hasPermissionToRequestOwnUserDeletion: boolean;
+  protected hasPermissionToUpdateViewMode: boolean;
+  protected hasPermissionToUpdateUserSettings: boolean;
+  protected isAccessTokenHidden = true;
+  protected readonly isFingerprintSupported = this.doesBrowserSupportAuthn();
+  protected isWebAuthnEnabled: boolean;
+  protected readonly language = document.documentElement.lang;
+  protected locales = [
     'ca',
     'de',
     'de-CH',
@@ -100,19 +104,18 @@ export class GfUserAccountSettingsComponent implements OnInit {
     'uk',
     'zh'
   ];
-  public user: User;
+  protected user: User;
 
-  public constructor(
-    private changeDetectorRef: ChangeDetectorRef,
-    private dataService: DataService,
-    private destroyRef: DestroyRef,
-    private formBuilder: FormBuilder,
-    private notificationService: NotificationService,
-    private settingsStorageService: SettingsStorageService,
-    private snackBar: MatSnackBar,
-    private userService: UserService,
-    public webAuthnService: WebAuthnService
-  ) {
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
+  private readonly dataService = inject(DataService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly notificationService = inject(NotificationService);
+  private readonly settingsStorageService = inject(SettingsStorageService);
+  private readonly snackBar = inject(MatSnackBar);
+  private readonly userService = inject(UserService);
+  private readonly webAuthnService = inject(WebAuthnService);
+
+  public constructor() {
     const { baseCurrency, currencies } = this.dataService.fetchInfo();
 
     this.baseCurrency = baseCurrency;
@@ -124,9 +127,24 @@ export class GfUserAccountSettingsComponent implements OnInit {
         if (state?.user) {
           this.user = state.user;
 
+          this.closeUserAccountMailHref = `mailto:hi@ghostfol.io?subject=Delete Account&body=${[
+            'Hello',
+            '',
+            'Please delete my Ghostfolio account.',
+            '',
+            `User ID: ${this.user.id}`,
+            '',
+            'Kind regards'
+          ].join(E_MAIL_LINE_BREAK)}`;
+
           this.hasPermissionToDeleteOwnUser = hasPermission(
             this.user.permissions,
             permissions.deleteOwnUser
+          );
+
+          this.hasPermissionToRequestOwnUserDeletion = hasPermission(
+            this.user.permissions,
+            permissions.requestOwnUserDeletion
           );
 
           this.hasPermissionToUpdateUserSettings = hasPermission(
@@ -139,7 +157,10 @@ export class GfUserAccountSettingsComponent implements OnInit {
             permissions.updateViewMode
           );
 
-          this.locales.push(this.user.settings.locale);
+          if (this.user.settings.locale) {
+            this.locales.push(this.user.settings.locale);
+          }
+
           this.locales = Array.from(new Set(this.locales)).sort();
 
           this.changeDetectorRef.markForCheck();
@@ -153,11 +174,11 @@ export class GfUserAccountSettingsComponent implements OnInit {
     this.update();
   }
 
-  public isCommunityLanguage() {
+  protected isCommunityLanguage() {
     return !['de', 'en'].includes(this.language);
   }
 
-  public onChangeUserSetting(aKey: string, aValue: string) {
+  protected onChangeUserSetting(aKey: string, aValue: string) {
     this.dataService
       .putUserSetting({ [aKey]: aValue })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -181,12 +202,12 @@ export class GfUserAccountSettingsComponent implements OnInit {
       });
   }
 
-  public onCloseAccount() {
+  protected onCloseAccount() {
     this.notificationService.confirm({
       confirmFn: () => {
         this.dataService
           .deleteOwnUser({
-            accessToken: this.deleteOwnUserForm.get('accessToken').value
+            accessToken: this.deleteOwnUserForm.controls.accessToken.value
           })
           .pipe(
             catchError(() => {
@@ -209,7 +230,7 @@ export class GfUserAccountSettingsComponent implements OnInit {
     });
   }
 
-  public onExperimentalFeaturesChange(aEvent: MatSlideToggleChange) {
+  protected onExperimentalFeaturesChange(aEvent: MatSlideToggleChange) {
     this.dataService
       .putUserSetting({ isExperimentalFeatures: aEvent.checked })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -225,13 +246,13 @@ export class GfUserAccountSettingsComponent implements OnInit {
       });
   }
 
-  public onExport() {
+  protected onExport() {
     this.dataService
       .fetchExport()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((data) => {
         for (const activity of data.activities) {
-          delete activity.id;
+          delete (activity as Omit<typeof activity, 'id'> & { id?: string }).id;
         }
 
         downloadAsFile({
@@ -245,7 +266,7 @@ export class GfUserAccountSettingsComponent implements OnInit {
       });
   }
 
-  public onRestrictedViewChange(aEvent: MatSlideToggleChange) {
+  protected onRestrictedViewChange(aEvent: MatSlideToggleChange) {
     this.dataService
       .putUserSetting({ isRestrictedView: aEvent.checked })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -261,7 +282,7 @@ export class GfUserAccountSettingsComponent implements OnInit {
       });
   }
 
-  public async onSignInWithFingerprintChange(aEvent: MatSlideToggleChange) {
+  protected async onSignInWithFingerprintChange(aEvent: MatSlideToggleChange) {
     if (aEvent.checked) {
       try {
         await this.registerDevice();
@@ -284,7 +305,7 @@ export class GfUserAccountSettingsComponent implements OnInit {
     }
   }
 
-  public onViewModeChange(aEvent: MatSlideToggleChange) {
+  protected onViewModeChange(aEvent: MatSlideToggleChange) {
     this.dataService
       .putUserSetting({ viewMode: aEvent.checked === true ? 'ZEN' : 'DEFAULT' })
       .pipe(takeUntilDestroyed(this.destroyRef))

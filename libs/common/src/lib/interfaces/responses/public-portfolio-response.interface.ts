@@ -26,7 +26,7 @@ export interface PublicPortfolioResponse extends PublicPortfolioResponseV1 {
     Order,
     'currency' | 'date' | 'fee' | 'quantity' | 'type' | 'unitPrice'
   > & {
-    SymbolProfile?: EnhancedSymbolProfile;
+    assetProfile?: EnhancedSymbolProfile;
     value: number;
     valueInBaseCurrency: number;
   })[];

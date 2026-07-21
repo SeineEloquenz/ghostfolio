@@ -1,10 +1,10 @@
 import { NumberParser } from '@internationalized/number';
 import {
   Type as ActivityType,
+  AssetProfileOverrides,
   MarketData,
   Prisma,
-  SymbolProfile,
-  SymbolProfileOverrides
+  SymbolProfile
 } from '@prisma/client';
 import { Big } from 'big.js';
 import { isISO4217CurrencyCode } from 'class-validator';
@@ -40,7 +40,7 @@ import {
   DERIVED_CURRENCIES,
   ghostfolioFearAndGreedIndexSymbolCryptocurrencies,
   ghostfolioFearAndGreedIndexSymbolStocks,
-  ghostfolioScraperApiSymbolPrefix
+  TAG_ID_EXCLUDE_FROM_ANALYSIS
 } from './config';
 import {
   AssetProfileIdentifier,
@@ -55,7 +55,7 @@ export const DATE_FORMAT_YEARLY = 'yyyy';
 
 export function applyAssetProfileOverrides<T extends Partial<SymbolProfile>>(
   assetProfile: T,
-  assetProfileOverrides: SymbolProfileOverrides | null
+  assetProfileOverrides: AssetProfileOverrides | null
 ): T {
   if (!assetProfileOverrides) {
     return assetProfile;
@@ -162,6 +162,16 @@ export function canDeleteAssetProfile({
   );
 }
 
+export function canDeleteUser({
+  currentUserId,
+  userId
+}: {
+  currentUserId: string;
+  userId: string;
+}): boolean {
+  return currentUserId !== userId;
+}
+
 export function capitalize(aString: string) {
   return aString.charAt(0).toUpperCase() + aString.slice(1).toLowerCase();
 }
@@ -199,12 +209,17 @@ export function extractNumberFromString({
   value: string;
 }): number | undefined {
   try {
+    // Only a leading minus sign indicates a negative value. Detect it before
+    // stripping so that hyphens within the text cannot flip the sign.
+    const isNegative = value.trim().startsWith('-');
+
     // Remove non-numeric characters (excluding international formatting characters)
     const numericValue = value.replace(/[^\d.,'’\s]/g, '');
 
     const parser = new NumberParser(locale);
+    const parsedValue = parser.parse(numericValue);
 
-    return parser.parse(numericValue);
+    return isNegative ? -parsedValue : parsedValue;
   } catch {
     return undefined;
   }
@@ -419,6 +434,18 @@ export function interpolate(template: string, context: any) {
   });
 }
 
+export function isAccountExcluded(account: {
+  isExcluded: boolean;
+  tags?: { id: string }[];
+}) {
+  return (
+    account.isExcluded ||
+    account.tags?.some(({ id }) => {
+      return id === TAG_ID_EXCLUDE_FROM_ANALYSIS;
+    }) === true
+  );
+}
+
 export function isCurrency(aCurrency: string) {
   if (!aCurrency) {
     return false;
@@ -502,10 +529,6 @@ export function parseSymbol({ dataSource, symbol }: AssetProfileIdentifier) {
     ticker,
     exchange: exchange ?? (dataSource === 'YAHOO' ? 'US' : undefined)
   };
-}
-
-export function prettifySymbol(aSymbol: string): string {
-  return aSymbol?.replace(ghostfolioScraperApiSymbolPrefix, '');
 }
 
 export function resetHours(aDate: Date) {

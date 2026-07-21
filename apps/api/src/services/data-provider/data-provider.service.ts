@@ -27,7 +27,8 @@ import {
   DataProviderHistoricalResponse,
   DataProviderResponse,
   LookupItem,
-  LookupResponse
+  LookupResponse,
+  MarketDataOfMarketsResponse
 } from '@ghostfolio/common/interfaces';
 import type { Granularity, UserWithSettings } from '@ghostfolio/common/types';
 
@@ -44,7 +45,7 @@ import { AssetProfileInvalidError } from './errors/asset-profile-invalid.error';
 export class DataProviderService implements OnModuleInit {
   private readonly logger = new Logger(DataProviderService.name);
 
-  private dataProviderMapping: { [dataProviderName: string]: string };
+  private dataProviderMapping: { [dataProviderName: string]: string } = {};
 
   public constructor(
     private readonly configurationService: ConfigurationService,
@@ -177,6 +178,12 @@ export class DataProviderService implements OnModuleInit {
     ];
   }
 
+  public getDataSourceForFearAndGreedIndexStocks(): DataSource {
+    return DataSource[
+      this.configurationService.get('DATA_SOURCE_FEAR_AND_GREED_INDEX_STOCKS')
+    ];
+  }
+
   public getDataSourceForImport(): DataSource {
     return DataSource[this.configurationService.get('DATA_SOURCE_IMPORT')];
   }
@@ -188,11 +195,7 @@ export class DataProviderService implements OnModuleInit {
         return DataSource[dataSource];
       });
 
-    const ghostfolioApiKey = await this.propertyService.getByKey<string>(
-      PROPERTY_API_KEY_GHOSTFOLIO
-    );
-
-    if (ghostfolioApiKey) {
+    if (await this.isDataProviderGhostfolioConfigured()) {
       dataSources.push('GHOSTFOLIO');
     }
 
@@ -505,7 +508,7 @@ export class DataProviderService implements OnModuleInit {
                 requestTimeout: ms('30 seconds')
               })
               .then((data) => {
-                return { dataSource, symbol, data: data?.[symbol] };
+                return { data, dataSource, symbol };
               })
           );
         }
@@ -543,6 +546,22 @@ export class DataProviderService implements OnModuleInit {
     }
 
     return result;
+  }
+
+  public async getMarketDataOfMarkets({
+    includeHistoricalData
+  }: {
+    includeHistoricalData: number;
+  }): Promise<MarketDataOfMarketsResponse> {
+    const dataProvider = this.getDataProvider(DataSource.GHOSTFOLIO);
+
+    if (!dataProvider.getMarketDataOfMarkets) {
+      throw new Error(
+        `The data provider (${DataSource.GHOSTFOLIO}) does not support the market data of markets`
+      );
+    }
+
+    return dataProvider.getMarketDataOfMarkets({ includeHistoricalData });
   }
 
   public async getQuotes({
@@ -799,6 +818,12 @@ export class DataProviderService implements OnModuleInit {
     );
 
     return response;
+  }
+
+  public async isDataProviderGhostfolioConfigured(): Promise<boolean> {
+    return !!(await this.propertyService.getByKey<string>(
+      PROPERTY_API_KEY_GHOSTFOLIO
+    ));
   }
 
   public async search({

@@ -5,6 +5,7 @@ import {
   PROPERTY_IS_DATA_GATHERING_ENABLED
 } from '@ghostfolio/common/config';
 import { UpdateAssetProfileDto } from '@ghostfolio/common/dtos';
+import { ConfirmationDialogType } from '@ghostfolio/common/enums';
 import {
   canDeleteAssetProfile,
   DATE_FORMAT,
@@ -75,6 +76,7 @@ import {
   AssetClass,
   AssetSubClass,
   DataGatheringFrequency,
+  DataSource,
   MarketData,
   Prisma,
   SymbolProfile
@@ -215,6 +217,8 @@ export class GfAssetProfileDialogComponent implements OnInit {
     }
   ];
 
+  protected readonly DataSource = DataSource;
+
   protected readonly dateRangeOptions = [
     {
       label: $localize`Current week` + ' (' + $localize`WTD` + ')',
@@ -277,7 +281,10 @@ export class GfAssetProfileDialogComponent implements OnInit {
     @Inject(MAT_DIALOG_DATA) protected data: AssetProfileDialogParams,
     private dataService: DataService,
     private destroyRef: DestroyRef,
-    private dialogRef: MatDialogRef<GfAssetProfileDialogComponent>,
+    private dialogRef: MatDialogRef<
+      GfAssetProfileDialogComponent,
+      AssetProfileIdentifier
+    >,
     private formBuilder: FormBuilder,
     private notificationService: NotificationService,
     private snackBar: MatSnackBar,
@@ -467,6 +474,19 @@ export class GfAssetProfileDialogComponent implements OnInit {
     this.dialogRef.close();
   }
 
+  protected onConvertToManualDataSource() {
+    this.patchAssetProfileIdentifier({
+      getErrorMessage: () => {
+        return (
+          '😞 ' +
+          $localize`An error occurred while converting the data source to ${DataSource.MANUAL}.`
+        );
+      },
+      title: $localize`Do you really want to convert the data source to ${DataSource.MANUAL}?`,
+      updateAssetProfileDto: { dataSource: DataSource.MANUAL }
+    });
+  }
+
   protected onDeleteProfileData({
     dataSource,
     symbol
@@ -550,7 +570,7 @@ export class GfAssetProfileDialogComponent implements OnInit {
         ) as Record<string, string>,
         locale:
           this.assetProfileForm.controls.scraperConfiguration.controls.locale
-            ?.value || undefined,
+            ?.value ?? undefined,
         mode:
           this.assetProfileForm.controls.scraperConfiguration.controls.mode
             ?.value ?? undefined,
@@ -599,7 +619,7 @@ export class GfAssetProfileDialogComponent implements OnInit {
       assetClass: this.assetProfileForm.controls.assetClass.value ?? undefined,
       assetSubClass:
         this.assetProfileForm.controls.assetSubClass.value ?? undefined,
-      comment: this.assetProfileForm.controls.comment.value || undefined,
+      comment: this.assetProfileForm.controls.comment.value ?? undefined,
       currency: this.assetProfileForm.controls.currency.value ?? undefined,
       dataGatheringFrequency:
         this.assetProfileForm.controls.dataGatheringFrequency.value ??
@@ -607,8 +627,8 @@ export class GfAssetProfileDialogComponent implements OnInit {
       isActive: isBoolean(this.assetProfileForm.controls.isActive.value)
         ? this.assetProfileForm.controls.isActive.value
         : undefined,
-      name: this.assetProfileForm.controls.name.value || undefined,
-      url: this.assetProfileForm.controls.url.value || undefined
+      name: this.assetProfileForm.controls.name.value ?? undefined,
+      url: this.assetProfileForm.controls.url.value ?? undefined
     };
 
     try {
@@ -666,13 +686,16 @@ export class GfAssetProfileDialogComponent implements OnInit {
   }
 
   protected async onSubmitAssetProfileIdentifierForm() {
+    const newAssetProfileIdentifier =
+      this.assetProfileIdentifierForm.controls.assetProfileIdentifier.value;
+
+    if (!newAssetProfileIdentifier?.dataSource) {
+      return;
+    }
+
     const assetProfileIdentifier: UpdateAssetProfileDto = {
-      dataSource:
-        this.assetProfileIdentifierForm.controls.assetProfileIdentifier.value
-          ?.dataSource ?? undefined,
-      symbol:
-        this.assetProfileIdentifierForm.controls.assetProfileIdentifier.value
-          ?.symbol ?? undefined
+      dataSource: newAssetProfileIdentifier.dataSource,
+      symbol: newAssetProfileIdentifier.symbol
     };
 
     try {
@@ -687,46 +710,19 @@ export class GfAssetProfileDialogComponent implements OnInit {
       return;
     }
 
-    this.adminService
-      .patchAssetProfile(
-        {
-          dataSource: this.data.dataSource,
-          symbol: this.data.symbol
-        },
-        assetProfileIdentifier
-      )
-      .pipe(
-        catchError((error: HttpErrorResponse) => {
-          if (error.status === StatusCodes.CONFLICT) {
-            this.snackBar.open(
-              $localize`${assetProfileIdentifier.symbol} (${assetProfileIdentifier.dataSource}) is already in use.`,
-              undefined,
-              {
-                duration: ms('3 seconds')
-              }
-            );
-          } else {
-            this.snackBar.open(
-              $localize`An error occurred while updating to ${assetProfileIdentifier.symbol} (${assetProfileIdentifier.dataSource}).`,
-              undefined,
-              {
-                duration: ms('3 seconds')
-              }
-            );
-          }
+    this.patchAssetProfileIdentifier({
+      getErrorMessage: (error) => {
+        if (error.status === StatusCodes.CONFLICT) {
+          // TODO: Ask if the user wants to merge the two asset profiles
 
-          return EMPTY;
-        }),
-        takeUntilDestroyed(this.destroyRef)
-      )
-      .subscribe(() => {
-        const newAssetProfileIdentifier = {
-          dataSource: assetProfileIdentifier.dataSource,
-          symbol: assetProfileIdentifier.symbol
-        };
+          return $localize`${assetProfileIdentifier.symbol} (${assetProfileIdentifier.dataSource}) is already in use.`;
+        }
 
-        this.dialogRef.close(newAssetProfileIdentifier);
-      });
+        return $localize`An error occurred while updating to ${assetProfileIdentifier.symbol} (${assetProfileIdentifier.dataSource}).`;
+      },
+      title: $localize`Do you really want to convert this asset profile to ${newAssetProfileIdentifier.symbol} (${newAssetProfileIdentifier.dataSource})?`,
+      updateAssetProfileDto: assetProfileIdentifier
+    });
   }
 
   protected onTestMarketData() {
@@ -743,7 +739,7 @@ export class GfAssetProfileDialogComponent implements OnInit {
           ) as Record<string, string>,
           locale:
             this.assetProfileForm.controls.scraperConfiguration.controls.locale
-              ?.value || undefined,
+              ?.value ?? undefined,
           mode: this.assetProfileForm.controls.scraperConfiguration.controls
             .mode?.value,
           selector:
@@ -823,5 +819,43 @@ export class GfAssetProfileDialogComponent implements OnInit {
     }
 
     return null;
+  }
+
+  private patchAssetProfileIdentifier({
+    getErrorMessage,
+    title,
+    updateAssetProfileDto
+  }: {
+    getErrorMessage: (error: HttpErrorResponse) => string;
+    title: string;
+    updateAssetProfileDto: UpdateAssetProfileDto;
+  }) {
+    this.notificationService.confirm({
+      title,
+      confirmFn: () => {
+        this.adminService
+          .patchAssetProfile(
+            {
+              dataSource: this.data.dataSource,
+              symbol: this.data.symbol
+            },
+            updateAssetProfileDto
+          )
+          .pipe(
+            catchError((error: HttpErrorResponse) => {
+              this.snackBar.open(getErrorMessage(error), undefined, {
+                duration: ms('3 seconds')
+              });
+
+              return EMPTY;
+            }),
+            takeUntilDestroyed(this.destroyRef)
+          )
+          .subscribe(({ dataSource, symbol }) => {
+            this.dialogRef.close({ dataSource, symbol });
+          });
+      },
+      confirmType: ConfirmationDialogType.Primary
+    });
   }
 }

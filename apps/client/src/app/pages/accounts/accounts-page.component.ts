@@ -1,5 +1,8 @@
 import { GfAccountDetailDialogComponent } from '@ghostfolio/client/components/account-detail-dialog/account-detail-dialog.component';
-import { AccountDetailDialogParams } from '@ghostfolio/client/components/account-detail-dialog/interfaces/interfaces';
+import {
+  AccountDetailDialogParams,
+  AccountDetailDialogResult
+} from '@ghostfolio/client/components/account-detail-dialog/interfaces/interfaces';
 import { ImpersonationStorageService } from '@ghostfolio/client/services/impersonation-storage.service';
 import { UserService } from '@ghostfolio/client/services/user/user.service';
 import {
@@ -15,6 +18,7 @@ import { NotificationService } from '@ghostfolio/ui/notifications';
 import { DataService } from '@ghostfolio/ui/services';
 
 import {
+  ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
   computed,
@@ -25,7 +29,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
-import { Account as AccountModel } from '@prisma/client';
+import { Account as AccountModel, Tag } from '@prisma/client';
 import { DeviceDetectorService } from 'ngx-device-detector';
 import { EMPTY } from 'rxjs';
 import { catchError } from 'rxjs/operators';
@@ -36,6 +40,7 @@ import { TransferBalanceDialogParams } from './transfer-balance/interfaces/inter
 import { GfTransferBalanceDialogComponent } from './transfer-balance/transfer-balance-dialog.component';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'page' },
   imports: [GfAccountsTableComponent, GfFabComponent, RouterModule],
   selector: 'gf-accounts-page',
@@ -120,9 +125,9 @@ export class GfAccountsPageComponent implements OnInit {
             this.user.permissions,
             permissions.updateAccount
           );
-
-          this.changeDetectorRef.markForCheck();
         }
+
+        this.changeDetectorRef.markForCheck();
       });
 
     this.fetchAccounts();
@@ -188,8 +193,9 @@ export class GfAccountsPageComponent implements OnInit {
     id,
     isExcluded,
     name,
-    platformId
-  }: AccountModel) {
+    platformId,
+    tags
+  }: AccountModel & { tags?: Tag[] }) {
     const dialogRef = this.dialog.open<
       GfCreateOrUpdateAccountDialogComponent,
       CreateOrUpdateAccountDialogParams
@@ -202,8 +208,10 @@ export class GfAccountsPageComponent implements OnInit {
           id,
           isExcluded,
           name,
-          platformId
-        }
+          platformId,
+          tags
+        },
+        user: this.user
       },
       height: this.deviceType() === 'mobile' ? '98vh' : '80vh',
       width: this.deviceType() === 'mobile' ? '100vw' : '50rem'
@@ -238,7 +246,8 @@ export class GfAccountsPageComponent implements OnInit {
   private openAccountDetailDialog(aAccountId: string) {
     const dialogRef = this.dialog.open<
       GfAccountDetailDialogComponent,
-      AccountDetailDialogParams
+      AccountDetailDialogParams,
+      AccountDetailDialogResult
     >(GfAccountDetailDialogComponent, {
       autoFocus: false,
       data: {
@@ -257,7 +266,11 @@ export class GfAccountsPageComponent implements OnInit {
     dialogRef
       .afterClosed()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
+      .subscribe((result) => {
+        if (result?.isNavigating) {
+          return;
+        }
+
         this.fetchAccounts();
 
         this.router.navigate(['.'], { relativeTo: this.route });
@@ -277,8 +290,10 @@ export class GfAccountsPageComponent implements OnInit {
           id: null,
           isExcluded: false,
           name: null,
-          platformId: null
-        }
+          platformId: null,
+          tags: []
+        },
+        user: this.user
       } satisfies CreateOrUpdateAccountDialogParams,
       height: this.deviceType() === 'mobile' ? '98vh' : '80vh',
       width: this.deviceType() === 'mobile' ? '100vw' : '50rem'

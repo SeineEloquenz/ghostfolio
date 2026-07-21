@@ -54,6 +54,7 @@ describe('PortfolioService', () => {
       null,
       null,
       exchangeRateDataService,
+      null,
       null
     );
 
@@ -65,6 +66,7 @@ describe('PortfolioService', () => {
       dataProviderService,
       null,
       exchangeRateDataService,
+      null,
       null,
       null,
       null
@@ -373,15 +375,15 @@ describe('PortfolioService', () => {
           {
             account,
             accountId: account.id,
+            assetProfile: { symbol: 'AAPL' },
             quantity: 1,
-            SymbolProfile: { symbol: 'AAPL' },
             type: 'BUY'
           },
           {
             account: null,
             accountId: null,
+            assetProfile: { symbol: 'BABA' },
             quantity: 2,
-            SymbolProfile: { symbol: 'BABA' },
             type: 'BUY'
           }
         ],
@@ -409,8 +411,8 @@ describe('PortfolioService', () => {
           {
             account,
             accountId: account.id,
+            assetProfile: { symbol: 'AAPL' },
             quantity: 1,
-            SymbolProfile: { symbol: 'AAPL' },
             type: 'BUY'
           }
         ],

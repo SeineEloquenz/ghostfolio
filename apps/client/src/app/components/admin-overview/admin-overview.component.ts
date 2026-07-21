@@ -27,6 +27,7 @@ import { GfValueComponent } from '@ghostfolio/ui/value';
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { CommonModule } from '@angular/common';
 import {
+  ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
   DestroyRef,
@@ -62,8 +63,10 @@ import {
   trashOutline
 } from 'ionicons/icons';
 import ms, { StringValue } from 'ms';
+import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ClipboardModule,
     CommonModule,
@@ -77,6 +80,7 @@ import ms, { StringValue } from 'ms';
     MatSnackBarModule,
     MatSlideToggleModule,
     MatTableModule,
+    NgxSkeletonLoaderModule,
     ReactiveFormsModule,
     RouterModule
   ],
@@ -88,13 +92,19 @@ export class GfAdminOverviewComponent implements OnInit {
   protected activitiesCount: number;
   protected couponDuration: StringValue = '14 days';
   protected readonly couponsDataSource = new MatTableDataSource<Coupon>();
-  protected readonly couponsDisplayedColumns = ['code', 'duration', 'actions'];
+  protected readonly couponsDisplayedColumns = [
+    'code',
+    'duration',
+    'createdAt',
+    'actions'
+  ];
   protected hasPermissionForSubscription: boolean;
   protected hasPermissionForSystemMessage: boolean;
   protected hasPermissionToSyncDemoUserAccount: boolean;
   protected hasPermissionToToggleReadOnlyMode: boolean;
   protected readonly info: InfoItem;
   protected isDataGatheringEnabled: boolean;
+  protected isLoading = false;
   protected readonly permissions = permissions;
   protected systemMessage: SystemMessage;
   protected userCount: number;
@@ -140,6 +150,8 @@ export class GfAdminOverviewComponent implements OnInit {
             permissions.toggleReadOnlyMode
           );
         }
+
+        this.changeDetectorRef.markForCheck();
       });
 
     addIcons({
@@ -197,12 +209,20 @@ export class GfAdminOverviewComponent implements OnInit {
   protected onAddCoupon() {
     const newCoupon: Coupon = {
       code: `${ghostfolioPrefix}${this.generateCouponCode(14)}`,
+      createdAt: new Date().toISOString(),
       duration: this.couponDuration
     };
 
+    const hasCopiedCouponCode = this.clipboard.copy(newCoupon.code);
+
     const coupons = [...this.couponsDataSource.data, newCoupon];
 
-    this.saveCoupons({ coupons, codeToCopy: newCoupon.code });
+    this.saveCoupons({
+      coupons,
+      snackBarMessage: hasCopiedCouponCode
+        ? '✅ ' + $localize`${newCoupon.code} has been copied to the clipboard`
+        : '✅ ' + $localize`Coupon ${newCoupon.code} has been created`
+    });
   }
 
   protected onChangeCouponDuration(aCouponDuration: StringValue) {
@@ -310,6 +330,8 @@ export class GfAdminOverviewComponent implements OnInit {
   }
 
   private fetchAdminData() {
+    this.isLoading = true;
+
     this.adminService
       .fetchAdminData()
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -325,6 +347,8 @@ export class GfAdminOverviewComponent implements OnInit {
         this.systemMessage = settings[PROPERTY_SYSTEM_MESSAGE] as SystemMessage;
         this.userCount = userCount;
         this.version = version;
+
+        this.isLoading = false;
 
         this.changeDetectorRef.markForCheck();
       });
@@ -357,11 +381,11 @@ export class GfAdminOverviewComponent implements OnInit {
   }
 
   private saveCoupons({
-    codeToCopy,
-    coupons
+    coupons,
+    snackBarMessage
   }: {
-    codeToCopy?: string;
     coupons: Coupon[];
+    snackBarMessage?: string;
   }) {
     this.dataService
       .putAdminSetting(PROPERTY_COUPONS, {
@@ -371,14 +395,10 @@ export class GfAdminOverviewComponent implements OnInit {
       .subscribe(() => {
         this.couponsDataSource.data = coupons;
 
-        if (codeToCopy) {
-          this.clipboard.copy(codeToCopy);
-
-          this.snackBar.open(
-            '✅ ' + $localize`${codeToCopy} has been copied to the clipboard`,
-            undefined,
-            { duration: ms('3 seconds') }
-          );
+        if (snackBarMessage) {
+          this.snackBar.open(snackBarMessage, undefined, {
+            duration: ms('3 seconds')
+          });
         }
 
         this.changeDetectorRef.markForCheck();

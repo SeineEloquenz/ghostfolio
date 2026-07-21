@@ -7,7 +7,6 @@ import {
   CreateTagDto
 } from '@ghostfolio/common/dtos';
 import { Activity, PortfolioPosition } from '@ghostfolio/common/interfaces';
-import { GfSymbolPipe } from '@ghostfolio/common/pipes';
 import { GfActivitiesTableComponent } from '@ghostfolio/ui/activities-table';
 import { GfDialogFooterComponent } from '@ghostfolio/ui/dialog-footer';
 import { GfDialogHeaderComponent } from '@ghostfolio/ui/dialog-header';
@@ -66,7 +65,6 @@ import { ImportActivitiesDialogParams } from './interfaces/interfaces';
     GfDialogFooterComponent,
     GfDialogHeaderComponent,
     GfFileDropDirective,
-    GfSymbolPipe,
     IonIcon,
     MatButtonModule,
     MatDialogModule,
@@ -151,7 +149,7 @@ export class GfImportActivitiesDialogComponent {
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe(({ holdings }) => {
           this.holdings = sortBy(holdings, ({ assetProfile }) => {
-            return assetProfile.name.toLowerCase();
+            return assetProfile.name?.toLowerCase();
           });
 
           this.assetProfileForm.controls.assetProfileIdentifier.enable();

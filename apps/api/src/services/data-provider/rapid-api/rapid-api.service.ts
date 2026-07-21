@@ -58,19 +58,19 @@ export class RapidApiService implements DataProviderInterface {
     symbol,
     to
   }: GetHistoricalParams): Promise<{
-    [symbol: string]: { [date: string]: DataProviderHistoricalResponse };
+    [date: string]: DataProviderHistoricalResponse;
   }> {
     try {
       if (symbol === ghostfolioFearAndGreedIndexSymbolStocks) {
         const fgi = await this.getFearAndGreedIndex();
 
-        return {
-          [symbol]: {
+        if (fgi) {
+          return {
             [format(getYesterday(), DATE_FORMAT)]: {
               marketPrice: fgi.previousClose.value
             }
-          }
-        };
+          };
+        }
       }
     } catch (error) {
       throw new Error(
@@ -101,14 +101,16 @@ export class RapidApiService implements DataProviderInterface {
       if (symbol === ghostfolioFearAndGreedIndexSymbolStocks) {
         const fgi = await this.getFearAndGreedIndex();
 
-        return {
-          [symbol]: {
-            currency: undefined,
-            dataSource: this.getName(),
-            marketPrice: fgi.now.value,
-            marketState: 'open'
-          }
-        };
+        if (fgi) {
+          return {
+            [symbol]: {
+              currency: undefined,
+              dataSource: this.getName(),
+              marketPrice: fgi.now.value,
+              marketState: 'open'
+            }
+          };
+        }
       }
     } catch (error) {
       this.logger.error(error);

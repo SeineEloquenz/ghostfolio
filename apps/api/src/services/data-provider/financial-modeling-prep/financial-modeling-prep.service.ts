@@ -47,7 +47,7 @@ import {
   isSameDay,
   parseISO
 } from 'date-fns';
-import { uniqBy } from 'lodash';
+import { isArray, uniqBy } from 'lodash';
 
 @Injectable()
 export class FinancialModelingPrepService
@@ -336,14 +336,12 @@ export class FinancialModelingPrepService
     symbol,
     to
   }: GetHistoricalParams): Promise<{
-    [symbol: string]: { [date: string]: DataProviderHistoricalResponse };
+    [date: string]: DataProviderHistoricalResponse;
   }> {
     const MAX_YEARS_PER_REQUEST = 5;
     const result: {
-      [symbol: string]: { [date: string]: DataProviderHistoricalResponse };
-    } = {
-      [symbol]: {}
-    };
+      [date: string]: DataProviderHistoricalResponse;
+    } = {};
 
     let currentFrom = from;
 
@@ -378,7 +376,7 @@ export class FinancialModelingPrepService
               isAfter(parseDate(date), currentFrom)) &&
             isBefore(parseDate(date), currentTo)
           ) {
-            result[symbol][date] = {
+            result[date] = {
               marketPrice: close
             };
           }
@@ -440,10 +438,14 @@ export class FinancialModelingPrepService
               signal: AbortSignal.timeout(requestTimeout)
             }
           )
-          .then(
-            (res) =>
-              res.json() as unknown as { price: number; symbol: string }[]
-          )
+          .then(async (res) => {
+            const json = (await res.json()) as unknown as {
+              price: number;
+              symbol: string;
+            }[];
+
+            return isArray(json) ? json : [];
+          })
       ]);
 
       for (const { currency, symbolTarget } of assetProfileResolutions) {

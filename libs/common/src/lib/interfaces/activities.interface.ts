@@ -5,10 +5,10 @@ import { Order, Tag } from '@prisma/client';
 
 export interface Activity extends Order {
   account?: AccountWithPlatform;
+  assetProfile: EnhancedSymbolProfile;
   error?: ActivityError;
   feeInAssetProfileCurrency: number;
   feeInBaseCurrency: number;
-  SymbolProfile: EnhancedSymbolProfile;
   tagIds?: string[];
   tags?: Tag[];
   unitPriceInAssetProfileCurrency: number;

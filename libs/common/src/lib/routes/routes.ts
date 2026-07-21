@@ -125,6 +125,27 @@ export const internalRoutes = {
       activities: {
         path: 'activities',
         routerLink: ['/portfolio', 'activities'],
+        subRoutes: {
+          clone: {
+            path: 'clone',
+            routerLink: (aActivityId: string) => {
+              return ['/portfolio', 'activities', aActivityId, 'clone'];
+            },
+            title: $localize`Clone Activity`
+          },
+          create: {
+            path: 'create',
+            routerLink: ['/portfolio', 'activities', 'create'],
+            title: $localize`Add Activity`
+          },
+          update: {
+            path: 'update',
+            routerLink: (aActivityId: string) => {
+              return ['/portfolio', 'activities', aActivityId, 'update'];
+            },
+            title: $localize`Update Activity`
+          }
+        },
         title: $localize`Activities`
       },
       allocations: {
@@ -153,8 +174,7 @@ export const internalRoutes = {
   webauthn: {
     excludeFromAssistant: true,
     path: 'webauthn',
-    routerLink: ['/webauthn'],
-    title: $localize`Sign in`
+    routerLink: ['/webauthn']
   },
   zen: {
     excludeFromAssistant: true,

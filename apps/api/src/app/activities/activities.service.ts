@@ -3,6 +3,7 @@ import { AccountService } from '@ghostfolio/api/app/account/account.service';
 import { CashDetails } from '@ghostfolio/api/app/account/interfaces/cash-details.interface';
 import { AssetProfileChangedEvent } from '@ghostfolio/api/events/asset-profile-changed.event';
 import { PortfolioChangedEvent } from '@ghostfolio/api/events/portfolio-changed.event';
+import { WHERE_ACCOUNT_NOT_EXCLUDED } from '@ghostfolio/api/helper/account.helper';
 import { LogPerformance } from '@ghostfolio/api/interceptors/performance-logging/performance-logging.interceptor';
 import { BenchmarkService } from '@ghostfolio/api/services/benchmark/benchmark.service';
 import { DataProviderService } from '@ghostfolio/api/services/data-provider/data-provider.service';
@@ -11,6 +12,7 @@ import { MarketDataService } from '@ghostfolio/api/services/market-data/market-d
 import { PrismaService } from '@ghostfolio/api/services/prisma/prisma.service';
 import { DataGatheringService } from '@ghostfolio/api/services/queues/data-gathering/data-gathering.service';
 import { SymbolProfileService } from '@ghostfolio/api/services/symbol-profile/symbol-profile.service';
+import { TagService } from '@ghostfolio/api/services/tag/tag.service';
 import {
   DATA_GATHERING_QUEUE_PRIORITY_HIGH,
   GATHER_ASSET_PROFILE_PROCESS_JOB_NAME,
@@ -60,7 +62,8 @@ export class ActivitiesService {
     private readonly exchangeRateDataService: ExchangeRateDataService,
     private readonly marketDataService: MarketDataService,
     private readonly prismaService: PrismaService,
-    private readonly symbolProfileService: SymbolProfileService
+    private readonly symbolProfileService: SymbolProfileService,
+    private readonly tagService: TagService
   ) {}
 
   public areCashActivitiesExcludedByFilters(filters: Filter[] = []) {
@@ -106,6 +109,13 @@ export class ActivitiesService {
     tags,
     userId
   }: { tags: Tag[]; userId: string } & AssetProfileIdentifier) {
+    await this.tagService.validateTagIds({
+      userId,
+      tagIds: tags.map(({ id }) => {
+        return id;
+      })
+    });
+
     const activities = await this.prismaService.order.findMany({
       where: {
         userId,
@@ -152,6 +162,15 @@ export class ActivitiesService {
       userId: string;
     }
   ): Promise<Order> {
+    const tags = data.tags ?? [];
+
+    await this.tagService.validateTagIds({
+      tagIds: tags.map(({ id }) => {
+        return id;
+      }),
+      userId: data.userId
+    });
+
     let account: Prisma.AccountCreateNestedOneWithoutActivitiesInput;
 
     if (data.accountId) {
@@ -166,7 +185,6 @@ export class ActivitiesService {
     }
 
     const accountId = data.accountId;
-    const tags = data.tags ?? [];
     const updateAccountBalance = data.updateAccountBalance ?? false;
     const userId = data.userId;
 
@@ -454,17 +472,7 @@ export class ActivitiesService {
           userId,
           accountId: account.id,
           accountUserId: account.userId,
-          comment: account.name,
-          createdAt: new Date(balanceItem.date),
-          currency: account.currency,
-          date: new Date(balanceItem.date),
-          fee: 0,
-          feeInAssetProfileCurrency: 0,
-          feeInBaseCurrency: 0,
-          id: balanceItem.id,
-          isDraft: false,
-          quantity: 1,
-          SymbolProfile: {
+          assetProfile: {
             activitiesCount: 0,
             assetClass: AssetClass.LIQUIDITY,
             assetSubClass: AssetSubClass.CASH,
@@ -481,6 +489,16 @@ export class ActivitiesService {
             symbol: account.currency,
             updatedAt: new Date(balanceItem.date)
           },
+          comment: account.name,
+          createdAt: new Date(balanceItem.date),
+          currency: account.currency,
+          date: new Date(balanceItem.date),
+          fee: 0,
+          feeInAssetProfileCurrency: 0,
+          feeInBaseCurrency: 0,
+          id: balanceItem.id,
+          isDraft: false,
+          quantity: 1,
           symbolProfileId: account.currency,
           type: ActivityType.BUY,
           unitPrice: 1,
@@ -568,18 +586,15 @@ export class ActivitiesService {
       { date: 'asc' }
     ];
 
-    const where: Prisma.OrderWhereInput = { userId };
+    const andConditions: Prisma.OrderWhereInput[] = [];
+    const where: Prisma.OrderWhereInput = { userId, AND: andConditions };
 
-    if (endDate || startDate) {
-      where.AND = [];
+    if (endDate) {
+      andConditions.push({ date: { lte: endDate } });
+    }
 
-      if (endDate) {
-        where.AND.push({ date: { lte: endDate } });
-      }
-
-      if (startDate) {
-        where.AND.push({ date: { gt: startDate } });
-      }
+    if (startDate) {
+      andConditions.push({ date: { gt: startDate } });
     }
 
     const {
@@ -617,14 +632,14 @@ export class ActivitiesService {
               },
               {
                 OR: [
-                  { SymbolProfileOverrides: { is: null } },
-                  { SymbolProfileOverrides: { assetClass: null } }
+                  { assetProfileOverrides: { is: null } },
+                  { assetProfileOverrides: { assetClass: null } }
                 ]
               }
             ]
           },
           {
-            SymbolProfileOverrides: {
+            assetProfileOverrides: {
               OR: filtersByAssetClass.map(({ id }) => {
                 return { assetClass: AssetClass[id] };
               })
@@ -682,13 +697,30 @@ export class ActivitiesService {
     }
 
     if (filtersByTag.length > 0) {
-      where.tags = {
-        some: {
-          OR: filtersByTag.map(({ id }) => {
-            return { id };
-          })
-        }
-      };
+      andConditions.push({
+        OR: [
+          {
+            tags: {
+              some: {
+                OR: filtersByTag.map(({ id }) => {
+                  return { id };
+                })
+              }
+            }
+          },
+          {
+            account: {
+              tags: {
+                some: {
+                  OR: filtersByTag.map(({ id }) => {
+                    return { tagId: id };
+                  })
+                }
+              }
+            }
+          }
+        ]
+      });
     }
 
     if (sortColumn) {
@@ -700,13 +732,9 @@ export class ActivitiesService {
     }
 
     if (withExcludedAccountsAndActivities === false) {
-      where.OR = [
-        { account: null },
-        { account: { NOT: { isExcluded: true } } }
-      ];
+      where.OR = [{ account: null }, { account: WHERE_ACCOUNT_NOT_EXCLUDED }];
 
       where.tags = {
-        ...where.tags,
         none: {
           id: TAG_ID_EXCLUDE_FROM_ANALYSIS
         }
@@ -721,7 +749,12 @@ export class ActivitiesService {
         include: {
           account: {
             include: {
-              platform: true
+              platform: true,
+              tags: {
+                include: {
+                  tag: true
+                }
+              }
             }
           },
           // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -732,6 +765,16 @@ export class ActivitiesService {
       }),
       this.prismaService.order.count({ where })
     ]);
+
+    for (const order of orders) {
+      if (order.account) {
+        order.account.tags = (
+          order.account.tags as unknown as { tag: Tag }[]
+        ).map(({ tag }) => {
+          return tag;
+        });
+      }
+    }
 
     const assetProfileIdentifiers = uniqBy(
       orders.map(({ SymbolProfile }) => {
@@ -797,12 +840,12 @@ export class ActivitiesService {
 
         return {
           ...order,
+          assetProfile,
           feeInAssetProfileCurrency,
           feeInBaseCurrency,
           unitPriceInAssetProfileCurrency,
           value,
-          valueInBaseCurrency,
-          SymbolProfile: assetProfile
+          valueInBaseCurrency
         };
       })
     );
@@ -888,6 +931,7 @@ export class ActivitiesService {
 
   public async updateActivity({
     data,
+    userId,
     where
   }: {
     data: Prisma.OrderUpdateInput & {
@@ -898,13 +942,21 @@ export class ActivitiesService {
       tags?: { id: string }[];
       type?: ActivityType;
     };
+    userId: string;
     where: Prisma.OrderWhereUniqueInput;
   }): Promise<Order> {
+    const tags = data.tags ?? [];
+
+    await this.tagService.validateTagIds({
+      userId,
+      tagIds: tags.map(({ id }) => {
+        return id;
+      })
+    });
+
     if (!data.comment) {
       data.comment = null;
     }
-
-    const tags = data.tags ?? [];
 
     let isDraft = false;
 
@@ -913,10 +965,6 @@ export class ActivitiesService {
       (data.SymbolProfile.connect.dataSource_symbol.dataSource === 'MANUAL' &&
         data.type === 'BUY')
     ) {
-      if (data.account?.connect?.id_userId?.id === null) {
-        data.account = { disconnect: true };
-      }
-
       delete data.SymbolProfile.connect;
       delete data.SymbolProfile.update.name;
     } else {
@@ -945,19 +993,13 @@ export class ActivitiesService {
     delete data.symbol;
     delete data.tags;
 
-    // Remove existing tags
-    await this.prismaService.order.update({
-      where,
-      data: { tags: { set: [] } }
-    });
-
     const activity = await this.prismaService.order.update({
       where,
       data: {
         ...data,
         isDraft,
         tags: {
-          connect: tags
+          set: tags
         }
       }
     });

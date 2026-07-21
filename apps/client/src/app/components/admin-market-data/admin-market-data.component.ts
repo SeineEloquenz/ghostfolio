@@ -4,10 +4,7 @@ import {
   DEFAULT_LOCALE,
   DEFAULT_PAGE_SIZE
 } from '@ghostfolio/common/config';
-import {
-  canDeleteAssetProfile,
-  getDateFormatString
-} from '@ghostfolio/common/helper';
+import { canDeleteAssetProfile } from '@ghostfolio/common/helper';
 import {
   AssetProfileIdentifier,
   AssetProfileItem,
@@ -16,7 +13,6 @@ import {
   User
 } from '@ghostfolio/common/interfaces';
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
-import { GfSymbolPipe } from '@ghostfolio/common/pipes';
 import { GfActivitiesFilterComponent } from '@ghostfolio/ui/activities-filter';
 import { GfFabComponent } from '@ghostfolio/ui/fab';
 import { translate } from '@ghostfolio/ui/i18n';
@@ -86,7 +82,6 @@ import { CreateAssetProfileDialogParams } from './create-asset-profile-dialog/in
     GfActivitiesFilterComponent,
     GfFabComponent,
     GfPremiumIndicatorComponent,
-    GfSymbolPipe,
     GfValueComponent,
     IonIcon,
     MatButtonModule,
@@ -153,7 +148,6 @@ export class GfAdminMarketDataComponent implements AfterViewInit, OnInit {
   ];
   protected readonly canDeleteAssetProfile = canDeleteAssetProfile;
   protected dataSource = new MatTableDataSource<AssetProfileItem>();
-  protected defaultDateFormat: string;
   protected readonly displayedColumns: string[] = [];
   protected readonly filters$ = new Subject<Filter[]>();
   protected isLoading = true;
@@ -162,6 +156,7 @@ export class GfAdminMarketDataComponent implements AfterViewInit, OnInit {
   protected placeholder = '';
   protected readonly selection = new SelectionModel<AssetProfileItem>(true);
   protected totalItems = 0;
+  protected readonly translate = translate;
   protected user: User;
 
   private activeFilters: Filter[] = [];
@@ -236,10 +231,6 @@ export class GfAdminMarketDataComponent implements AfterViewInit, OnInit {
       .subscribe((state) => {
         if (state?.user) {
           this.user = state.user;
-
-          this.defaultDateFormat = getDateFormatString(
-            this.user.settings.locale
-          );
         }
       });
 
@@ -417,7 +408,8 @@ export class GfAdminMarketDataComponent implements AfterViewInit, OnInit {
 
         const dialogRef = this.dialog.open<
           GfAssetProfileDialogComponent,
-          AssetProfileDialogParams
+          AssetProfileDialogParams,
+          AssetProfileIdentifier
         >(GfAssetProfileDialogComponent, {
           autoFocus: false,
           data: {
@@ -435,15 +427,13 @@ export class GfAdminMarketDataComponent implements AfterViewInit, OnInit {
         dialogRef
           .afterClosed()
           .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe(
-            (newAssetProfileIdentifier: AssetProfileIdentifier | undefined) => {
-              if (newAssetProfileIdentifier) {
-                this.onOpenAssetProfileDialog(newAssetProfileIdentifier);
-              } else {
-                this.router.navigate(['.'], { relativeTo: this.route });
-              }
+          .subscribe((newAssetProfileIdentifier) => {
+            if (newAssetProfileIdentifier) {
+              this.onOpenAssetProfileDialog(newAssetProfileIdentifier);
+            } else {
+              this.router.navigate(['.'], { relativeTo: this.route });
             }
-          );
+          });
       });
   }
 

@@ -41,6 +41,7 @@ import {
   DATE_FORMAT,
   getAssetProfileIdentifier,
   getSum,
+  isAccountExcluded,
   parseDate
 } from '@ghostfolio/common/helper';
 import {
@@ -169,7 +170,8 @@ export class PortfolioService {
         where,
         include: {
           activities: { include: { SymbolProfile: true } },
-          platform: true
+          platform: true,
+          tags: true
         },
         orderBy: { name: 'asc' }
       }),
@@ -827,10 +829,9 @@ export class PortfolioService {
       timeWeightedInvestmentWithCurrencyEffect
     } = holding;
 
-    const activitiesOfHolding = activities.filter(({ SymbolProfile }) => {
+    const activitiesOfHolding = activities.filter(({ assetProfile }) => {
       return (
-        SymbolProfile.dataSource === dataSource &&
-        SymbolProfile.symbol === symbol
+        assetProfile.dataSource === dataSource && assetProfile.symbol === symbol
       );
     });
 
@@ -1879,7 +1880,7 @@ export class PortfolioService {
 
     for (const activity of activities) {
       if (
-        activity.account?.isExcluded ||
+        (activity.account && isAccountExcluded(activity.account)) ||
         activity.tags?.some(({ id }) => {
           return id === TAG_ID_EXCLUDE_FROM_ANALYSIS;
         })
@@ -2054,11 +2055,11 @@ export class PortfolioService {
         .filter(({ isDraft, type }) => {
           return isDraft === false && type === activityType;
         })
-        .map(({ currency, quantity, SymbolProfile, unitPrice }) => {
+        .map(({ assetProfile, currency, quantity, unitPrice }) => {
           return new Big(
             this.exchangeRateDataService.toCurrency(
               new Big(quantity).mul(unitPrice).toNumber(),
-              currency ?? SymbolProfile.currency,
+              currency ?? assetProfile.currency,
               userCurrency
             )
           );
@@ -2123,13 +2124,14 @@ export class PortfolioService {
     let currentAccounts: (Account & {
       Order?: Order[];
       platform?: Platform;
+      tags?: Tag[];
     })[] = [];
 
     if (filters.length === 0) {
       currentAccounts = await this.accountService.getAccounts(userId);
     } else if (filters.length === 1 && filters[0].type === 'ACCOUNT') {
       currentAccounts = await this.accountService.accounts({
-        include: { platform: true },
+        include: { platform: true, tags: true },
         where: { id: filters[0].id }
       });
     } else {
@@ -2146,13 +2148,13 @@ export class PortfolioService {
       );
 
       currentAccounts = await this.accountService.accounts({
-        include: { platform: true },
+        include: { platform: true, tags: true },
         where: { id: { in: accountIds } }
       });
     }
 
     currentAccounts = currentAccounts.filter((account) => {
-      return withExcludedAccounts || account.isExcluded === false;
+      return withExcludedAccounts || !isAccountExcluded(account);
     });
 
     // Iterate over the accounts plus a null entry to group activities without
@@ -2195,16 +2197,11 @@ export class PortfolioService {
         }
       }
 
-      for (const {
-        account,
-        quantity,
-        SymbolProfile,
-        type
-      } of ordersByAccount) {
+      for (const { account, assetProfile, quantity, type } of ordersByAccount) {
         const currentValueOfSymbolInBaseCurrency =
           getFactor(type) *
           quantity *
-          (portfolioItemsNow[SymbolProfile.symbol]?.marketPriceInBaseCurrency ??
+          (portfolioItemsNow[assetProfile.symbol]?.marketPriceInBaseCurrency ??
             0);
 
         if (accounts[account?.id || UNKNOWN_KEY]?.valueInBaseCurrency) {

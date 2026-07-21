@@ -1,9 +1,12 @@
 import { GfAccountDetailDialogComponent } from '@ghostfolio/client/components/account-detail-dialog/account-detail-dialog.component';
-import { AccountDetailDialogParams } from '@ghostfolio/client/components/account-detail-dialog/interfaces/interfaces';
+import {
+  AccountDetailDialogParams,
+  AccountDetailDialogResult
+} from '@ghostfolio/client/components/account-detail-dialog/interfaces/interfaces';
 import { ImpersonationStorageService } from '@ghostfolio/client/services/impersonation-storage.service';
 import { UserService } from '@ghostfolio/client/services/user/user.service';
 import { MAX_TOP_HOLDINGS, UNKNOWN_KEY } from '@ghostfolio/common/config';
-import { getCountryName, prettifySymbol } from '@ghostfolio/common/helper';
+import { getCountryName } from '@ghostfolio/common/helper';
 import {
   AssetProfileIdentifier,
   HoldingWithParents,
@@ -22,6 +25,7 @@ import { GfValueComponent } from '@ghostfolio/ui/value';
 import { GfWorldMapChartComponent } from '@ghostfolio/ui/world-map-chart';
 
 import {
+  ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
   computed,
@@ -48,6 +52,7 @@ import { filter, switchMap, tap } from 'rxjs';
 import { AllocationsPageParams } from './interfaces/interfaces';
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     GfPortfolioProportionChartComponent,
     GfPremiumIndicatorComponent,
@@ -161,6 +166,8 @@ export class GfAllocationsPageComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((impersonationId) => {
         this.hasImpersonationId = !!impersonationId;
+
+        this.changeDetectorRef.markForCheck();
       });
 
     this.userService.stateChanged
@@ -488,10 +495,10 @@ export class GfAllocationsPageComponent implements OnInit {
         this.totalValueInEtf += this.holdings[symbol].value;
       }
 
-      this.symbols[prettifySymbol(symbol)] = {
+      this.symbols[symbol] = {
+        symbol,
         dataSource: position.assetProfile.dataSource,
         name: position.assetProfile.name ?? '',
-        symbol: prettifySymbol(symbol),
         value:
           (isNumber(position.valueInBaseCurrency)
             ? position.valueInBaseCurrency
@@ -558,11 +565,11 @@ export class GfAllocationsPageComponent implements OnInit {
                 return currentParentHolding &&
                   isNumber(currentParentHolding.valueInBaseCurrency)
                   ? {
+                      symbol,
                       allocationInPercentage:
                         currentParentHolding.valueInBaseCurrency / value,
                       name: holding.assetProfile.name ?? '',
                       position: holding,
-                      symbol: prettifySymbol(symbol),
                       valueInBaseCurrency:
                         currentParentHolding.valueInBaseCurrency
                     }
@@ -600,7 +607,8 @@ export class GfAllocationsPageComponent implements OnInit {
   private openAccountDetailDialog(aAccountId: string) {
     const dialogRef = this.dialog.open<
       GfAccountDetailDialogComponent,
-      AccountDetailDialogParams
+      AccountDetailDialogParams,
+      AccountDetailDialogResult
     >(GfAccountDetailDialogComponent, {
       autoFocus: false,
       data: {
@@ -619,7 +627,11 @@ export class GfAllocationsPageComponent implements OnInit {
     dialogRef
       .afterClosed()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
+      .subscribe((result) => {
+        if (result?.isNavigating) {
+          return;
+        }
+
         void this.router.navigate(['.'], { relativeTo: this.route });
       });
   }

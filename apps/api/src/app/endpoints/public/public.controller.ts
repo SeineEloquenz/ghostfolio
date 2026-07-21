@@ -110,22 +110,22 @@ export class PublicController {
       ? []
       : activities.map(
           ({
+            assetProfile,
             currency,
             date,
             fee,
             quantity,
-            SymbolProfile,
             type,
             unitPrice,
             value,
             valueInBaseCurrency
           }) => {
             return {
+              assetProfile,
               currency,
               date,
               fee,
               quantity,
-              SymbolProfile,
               type,
               unitPrice,
               value,
