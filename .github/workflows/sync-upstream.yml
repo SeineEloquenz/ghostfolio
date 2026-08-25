@@ -1,0 +1,153 @@
+name: Sync upstream release
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Upstream tag to sync, e.g. 3.61.0 (defaults to the latest upstream release)'
+        required: false
+        type: string
+
+concurrency:
+  group: sync-upstream
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_URL: https://github.com/ghostfolio/ghostfolio.git
+
+jobs:
+  sync:
+    if: github.repository == 'SeineEloquenz/ghostfolio'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify sync token
+        env:
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+        run: |
+          if [ -z "$GH_SYNC_TOKEN" ]; then
+            echo "::error::Secret GH_SYNC_TOKEN is not set. Create a fine-grained PAT for this repository with Contents: read & write and Pull requests: read & write, then add it as the repository secret GH_SYNC_TOKEN."
+            exit 1
+          fi
+
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GH_SYNC_TOKEN }}
+
+      - name: Resolve upstream release tag
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # Upstream releases are tagged without a prefix (e.g. 3.61.0); this
+          # fork tags its own merge commit with a "v" prefix (e.g. v3.61.0).
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ]; then
+            tag=$(git ls-remote --tags --refs "$UPSTREAM_URL" \
+              | sed 's#.*refs/tags/##' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -1)
+          fi
+          if [ -z "$tag" ]; then
+            echo "::error::Could not determine an upstream release tag."
+            exit 1
+          fi
+          fork_tag="v${tag#v}"
+          echo "Upstream release tag: $tag (fork tag: $fork_tag)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "fork_tag=$fork_tag" >> "$GITHUB_OUTPUT"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$fork_tag" >/dev/null 2>&1; then
+            echo "Tag $fork_tag already exists in this fork, nothing to do."
+            echo "already_synced=true" >> "$GITHUB_OUTPUT"
+            echo "\`$fork_tag\` is already synced." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "already_synced=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge upstream tag into main
+        id: merge
+        if: steps.resolve.outputs.already_synced == 'false'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git fetch --no-tags "$UPSTREAM_URL" "+refs/tags/$TAG:refs/upstream/$TAG"
+          # Dereference in case the upstream tag is annotated.
+          sha=$(git rev-parse "refs/upstream/$TAG^{commit}")
+          echo "upstream_sha=$sha" >> "$GITHUB_OUTPUT"
+
+          if git merge --no-ff --no-edit -m "Merge upstream $TAG into main" "$sha"; then
+            echo "conflicted=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "conflicted=true" >> "$GITHUB_OUTPUT"
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt"
+            git merge --abort
+          fi
+
+      - name: Push merge and release tag
+        if: steps.merge.outputs.conflicted == 'false'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          FORK_TAG: ${{ steps.resolve.outputs.fork_tag }}
+        run: |
+          set -euo pipefail
+
+          # The tag points at this fork's merge commit, not upstream's, so the
+          # image built by "Docker image CD" contains this fork's patches.
+          git tag "$FORK_TAG"
+          git push --atomic origin HEAD:main "refs/tags/$FORK_TAG"
+
+          echo "Merged upstream \`$TAG\` into \`main\` and tagged \`$FORK_TAG\` at $(git rev-parse --short HEAD)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open pull request for conflicting merge
+        if: steps.merge.outputs.conflicted == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          FORK_TAG: ${{ steps.resolve.outputs.fork_tag }}
+          UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          branch="sync/upstream-$TAG"
+          git push --force origin "$UPSTREAM_SHA:refs/heads/$branch"
+
+          echo "Upstream \`$TAG\` conflicts with this fork and was not merged." >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$(gh pr list --head "$branch" --base main --state open --json number --jq '.[].number')" ]; then
+            echo "A pull request for $branch is already open."
+            exit 0
+          fi
+
+          {
+            echo "Upstream released \`$TAG\`, but merging it into \`main\` hit conflicts, so it was not merged automatically."
+            echo
+            echo "Conflicting files:"
+            echo
+            sed 's#^#- `#; s#$#`#' "$RUNNER_TEMP/conflicts.txt"
+            echo
+            echo "Resolve the conflicts here or locally and merge this PR **with a merge commit**."
+            echo "The next scheduled run will see that \`main\` already contains \`$TAG\`, push the \`$FORK_TAG\` tag at the merge commit and trigger the Docker image build."
+          } > "$RUNNER_TEMP/body.md"
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Merge upstream $TAG into main" \
+            --body-file "$RUNNER_TEMP/body.md"
