@@ -54,9 +54,12 @@ export class FinancialModelingPrepService
   implements DataProviderInterface, OnModuleInit
 {
   private static countriesMapping = {
+    'Czech Republic': 'CZ',
     'Korea (the Republic of)': 'KR',
+    Macau: 'MO',
     'Russian Federation': 'RU',
-    'Taiwan (Province of China)': 'TW'
+    'Taiwan (Province of China)': 'TW',
+    Turkey: 'TR'
   };
 
   private readonly logger = new Logger(FinancialModelingPrepService.name);
@@ -111,6 +114,12 @@ export class FinancialModelingPrepService
           )
           .then((res) => res.json());
 
+        if (!quote) {
+          throw new AssetProfileDelistedError(
+            `No data found, ${symbol} (${this.getName()}) may be delisted`
+          );
+        }
+
         response.assetClass = AssetClass.LIQUIDITY;
         response.assetSubClass = AssetSubClass.CRYPTOCURRENCY;
         response.currency = symbol.substring(
@@ -163,17 +172,18 @@ export class FinancialModelingPrepService
             .then((res) => res.json());
 
           response.countries = etfCountryWeightings
-            .filter(({ country: countryName }) => {
-              return countryName.toLowerCase() !== 'other';
-            })
             .map(({ country: countryName, weightPercentage }) => {
               return {
                 code: getCountryCodeByName({
                   aliases: FinancialModelingPrepService.countriesMapping,
+                  dataSource: this.getName(),
                   name: countryName
                 }),
-                weight: parseFloat(weightPercentage.slice(0, -1)) / 100
+                weight: parseFloat(`${weightPercentage}`) / 100
               };
+            })
+            .filter(({ code }) => {
+              return !!code;
             });
 
           const etfHoldings = await this.fetchService
@@ -259,7 +269,11 @@ export class FinancialModelingPrepService
         ).toFixed(3)} seconds`;
       }
 
-      this.logger.error(message);
+      if (error instanceof AssetProfileDelistedError) {
+        this.logger.warn(error.message);
+      } else {
+        this.logger.error(message);
+      }
     }
 
     return response;
@@ -478,6 +492,8 @@ export class FinancialModelingPrepService
               currencyBySymbolMap[symbol] = {
                 currency: assetProfile.currency
               };
+            } else if (this.cryptocurrencyService.isCryptocurrency(symbol)) {
+              currencyBySymbolMap[symbol] = { currency: DEFAULT_CURRENCY };
             }
           })
         );

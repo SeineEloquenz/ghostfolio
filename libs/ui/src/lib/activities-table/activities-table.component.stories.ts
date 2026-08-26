@@ -16,7 +16,7 @@ import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 
 import { GfActivityTypeComponent } from '../activity-type/activity-type.component';
 import { GfEntityLogoComponent } from '../entity-logo';
-import { GfNoTransactionsInfoComponent } from '../no-transactions-info/no-transactions-info.component';
+import { GfNoActivitiesInfoComponent } from '../no-activities-info/no-activities-info.component';
 import { NotificationService } from '../notifications';
 import { GfValueComponent } from '../value';
 import { GfActivitiesTableComponent } from './activities-table.component';
@@ -31,7 +31,6 @@ const activities: Activity[] = [
     date: new Date('2025-04-09T13:45:45.504Z'),
     fee: 1,
     id: 'a76968ff-80a4-4453-81ed-c3627dea3919',
-    isDraft: false,
     quantity: 115,
     symbolProfileId: '21746431-d612-4298-911c-3099b2a43003',
     type: 'BUY',
@@ -39,12 +38,10 @@ const activities: Activity[] = [
     updatedAt: new Date('2025-05-31T18:43:01.840Z'),
     userId: '081aa387-487d-4438-83a4-3060eb2a016e',
     account: {
-      balance: 150.2,
       comment: null,
       createdAt: new Date('2025-05-31T13:00:13.940Z'),
       currency: 'USD',
       id: '776bd1e9-b2f6-4f7e-933d-18756c2f0625',
-      isExcluded: false,
       name: 'Trading Account',
       platformId: '9da3a8a7-4795-43e3-a6db-ccb914189737',
       updatedAt: new Date('2025-06-01T06:53:10.569Z'),
@@ -98,7 +95,6 @@ const activities: Activity[] = [
     date: new Date('2024-08-07T13:38:06.289Z'),
     fee: 2.97,
     id: '0c2f4fbf-6edc-4adc-8f83-abf8148500ec',
-    isDraft: false,
     quantity: 105,
     symbolProfileId: '21746431-d612-4298-911c-3099b2a43003',
     type: 'BUY',
@@ -106,12 +102,10 @@ const activities: Activity[] = [
     updatedAt: new Date('2025-05-31T18:46:14.175Z'),
     userId: '081aa387-487d-4438-83a4-3060eb2a016e',
     account: {
-      balance: 150.2,
       comment: null,
       createdAt: new Date('2025-05-31T13:00:13.940Z'),
       currency: 'USD',
       id: '776bd1e9-b2f6-4f7e-933d-18756c2f0625',
-      isExcluded: false,
       name: 'Trading Account',
       platformId: '9da3a8a7-4795-43e3-a6db-ccb914189737',
       updatedAt: new Date('2025-06-01T06:53:10.569Z'),
@@ -165,7 +159,6 @@ const activities: Activity[] = [
     date: new Date('2024-03-12T15:14:38.597Z'),
     fee: 45.29,
     id: 'bfc92677-faf4-4d4f-9762-e0ec056525c2',
-    isDraft: false,
     quantity: 167,
     symbolProfileId: '888d4123-db9a-42f3-9775-01b1ae6f9092',
     type: 'BUY',
@@ -173,12 +166,10 @@ const activities: Activity[] = [
     updatedAt: new Date('2025-05-31T18:49:54.064Z'),
     userId: '081aa387-487d-4438-83a4-3060eb2a016e',
     account: {
-      balance: 150.2,
       comment: null,
       createdAt: new Date('2025-05-31T13:00:13.940Z'),
       currency: 'USD',
       id: '776bd1e9-b2f6-4f7e-933d-18756c2f0625',
-      isExcluded: false,
       name: 'Trading Account',
       platformId: '9da3a8a7-4795-43e3-a6db-ccb914189737',
       updatedAt: new Date('2025-06-01T06:53:10.569Z'),
@@ -232,7 +223,6 @@ const activities: Activity[] = [
     date: new Date('2024-02-23T15:53:15.745Z'),
     fee: 3,
     id: '7c9ceb54-acb1-4850-bfb1-adb41c29fd6a',
-    isDraft: false,
     quantity: 81,
     symbolProfileId: '36effe43-7cb4-4e8b-b7ac-03ff65702cb9',
     type: 'BUY',
@@ -240,12 +230,10 @@ const activities: Activity[] = [
     updatedAt: new Date('2025-05-31T18:48:48.209Z'),
     userId: '081aa387-487d-4438-83a4-3060eb2a016e',
     account: {
-      balance: 150.2,
       comment: null,
       createdAt: new Date('2025-05-31T13:00:13.940Z'),
       currency: 'USD',
       id: '776bd1e9-b2f6-4f7e-933d-18756c2f0625',
-      isExcluded: false,
       name: 'Trading Account',
       platformId: '9da3a8a7-4795-43e3-a6db-ccb914189737',
       updatedAt: new Date('2025-06-01T06:53:10.569Z'),
@@ -299,7 +287,6 @@ const activities: Activity[] = [
     date: new Date('2023-01-11T14:34:55.174Z'),
     fee: 7.38,
     id: '3fe87b3f-78de-407a-bc02-4189b221051f',
-    isDraft: false,
     quantity: 55,
     symbolProfileId: '21746431-d612-4298-911c-3099b2a43003',
     type: 'BUY',
@@ -307,12 +294,10 @@ const activities: Activity[] = [
     updatedAt: new Date('2025-05-31T18:46:44.616Z'),
     userId: '081aa387-487d-4438-83a4-3060eb2a016e',
     account: {
-      balance: 150.2,
       comment: null,
       createdAt: new Date('2025-05-31T13:00:13.940Z'),
       currency: 'USD',
       id: '776bd1e9-b2f6-4f7e-933d-18756c2f0625',
-      isExcluded: false,
       name: 'Trading Account',
       platformId: '9da3a8a7-4795-43e3-a6db-ccb914189737',
       updatedAt: new Date('2025-06-01T06:53:10.569Z'),
@@ -373,7 +358,7 @@ export default {
         CommonModule,
         GfActivityTypeComponent,
         GfEntityLogoComponent,
-        GfNoTransactionsInfoComponent,
+        GfNoActivitiesInfoComponent,
         GfValueComponent,
         IonIcon,
         MatButtonModule,
@@ -486,6 +471,32 @@ export const Actions: Story = {
     pageSize: 10,
     showAccountColumn: true,
     showActions: true,
+    showCheckbox: false,
+    showNameColumn: true,
+    sortColumn: 'date',
+    sortDirection: 'desc',
+    sortDisabled: false,
+    totalItems: activities.length
+  }
+};
+
+export const Toolbar: Story = {
+  args: {
+    dataSource,
+    activityTypes: ['BUY', 'DIVIDEND', 'SELL'],
+    baseCurrency: 'USD',
+    deviceType: 'desktop',
+    hasActivities: true,
+    hasPermissionToCreateActivity: true,
+    hasPermissionToDeleteActivity: true,
+    hasPermissionToExportActivities: true,
+    hasPermissionToFilterByType: true,
+    hasPermissionToOpenDetails: false,
+    locale: 'en-US',
+    pageIndex: 0,
+    pageSize: 10,
+    showAccountColumn: true,
+    showActions: false,
     showCheckbox: false,
     showNameColumn: true,
     sortColumn: 'date',

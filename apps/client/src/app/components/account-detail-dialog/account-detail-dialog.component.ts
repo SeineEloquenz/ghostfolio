@@ -15,12 +15,15 @@ import {
   User
 } from '@ghostfolio/common/interfaces';
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
+import { hasScope, scopes } from '@ghostfolio/common/scopes';
 import { GfAccountBalancesComponent } from '@ghostfolio/ui/account-balances';
 import { GfActivitiesTableComponent } from '@ghostfolio/ui/activities-table';
 import { GfDialogFooterComponent } from '@ghostfolio/ui/dialog-footer';
 import { GfDialogHeaderComponent } from '@ghostfolio/ui/dialog-header';
 import { GfHoldingsTableComponent } from '@ghostfolio/ui/holdings-table';
+import { translate } from '@ghostfolio/ui/i18n';
 import { DataService } from '@ghostfolio/ui/services';
+import { GfTagsSelectorComponent } from '@ghostfolio/ui/tags-selector';
 import { GfValueComponent } from '@ghostfolio/ui/value';
 
 import {
@@ -42,12 +45,14 @@ import { MatTableDataSource } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
 import { NavigationStart, Router } from '@angular/router';
 import { IonIcon } from '@ionic/angular/standalone';
+import { Tag } from '@prisma/client';
 import { Big } from 'big.js';
 import { format, parseISO } from 'date-fns';
 import { addIcons } from 'ionicons';
 import {
   albumsOutline,
   cashOutline,
+  readerOutline,
   swapVerticalOutline
 } from 'ionicons/icons';
 import { isNumber } from 'lodash';
@@ -69,6 +74,7 @@ import {
     GfDialogHeaderComponent,
     GfHoldingsTableComponent,
     GfInvestmentChartComponent,
+    GfTagsSelectorComponent,
     GfValueComponent,
     IonIcon,
     MatButtonModule,
@@ -97,7 +103,7 @@ export class GfAccountDetailDialogComponent implements OnInit {
   protected holdings: PortfolioPosition[];
   protected interestInBaseCurrency: number;
   protected interestInBaseCurrencyPrecision = 2;
-  protected isLoadingActivities: boolean;
+  protected isLoading = true;
   protected isLoadingChart: boolean;
   protected name: string | null;
   protected pageIndex = 0;
@@ -105,6 +111,7 @@ export class GfAccountDetailDialogComponent implements OnInit {
   protected platformName: string;
   protected sortColumn = 'date';
   protected sortDirection: SortDirection = 'desc';
+  protected tags: Tag[];
   protected totalItems: number;
   protected user: User;
   protected valueInBaseCurrency: number;
@@ -148,7 +155,12 @@ export class GfAccountDetailDialogComponent implements OnInit {
         }
       });
 
-    addIcons({ albumsOutline, cashOutline, swapVerticalOutline });
+    addIcons({
+      albumsOutline,
+      cashOutline,
+      readerOutline,
+      swapVerticalOutline
+    });
   }
 
   public ngOnInit() {
@@ -161,6 +173,8 @@ export class GfAccountDetailDialogComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         this.initialize();
+
+        this.refreshUser();
       });
   }
 
@@ -180,6 +194,8 @@ export class GfAccountDetailDialogComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         this.initialize();
+
+        this.refreshUser();
       });
   }
 
@@ -214,7 +230,8 @@ export class GfAccountDetailDialogComponent implements OnInit {
 
   protected showValuesInPercentage() {
     return (
-      this.data.hasImpersonationId || this.user?.settings?.isRestrictedView
+      !hasScope(this.user?.scopes, scopes.portfolioReadValues) ||
+      this.user?.settings?.isRestrictedView
     );
   }
 
@@ -231,6 +248,7 @@ export class GfAccountDetailDialogComponent implements OnInit {
           interestInBaseCurrency,
           name,
           platform,
+          tags,
           value,
           valueInBaseCurrency
         }) => {
@@ -280,7 +298,18 @@ export class GfAccountDetailDialogComponent implements OnInit {
 
           this.name = name;
           this.platformName = platform?.name ?? '-';
+
+          this.tags =
+            tags?.map((tag) => {
+              return {
+                ...tag,
+                name: translate(tag.name)
+              };
+            }) ?? [];
+
           this.valueInBaseCurrency = valueInBaseCurrency;
+
+          this.isLoading = false;
 
           this.changeDetectorRef.markForCheck();
         }
@@ -288,8 +317,6 @@ export class GfAccountDetailDialogComponent implements OnInit {
   }
 
   private fetchActivities() {
-    this.isLoadingActivities = true;
-
     this.dataService
       .fetchActivities({
         filters: [{ id: this.data.accountId, type: 'ACCOUNT' }],
@@ -302,8 +329,6 @@ export class GfAccountDetailDialogComponent implements OnInit {
       .subscribe(({ activities, count }) => {
         this.dataSource = new MatTableDataSource(activities);
         this.totalItems = count;
-
-        this.isLoadingActivities = false;
 
         this.changeDetectorRef.markForCheck();
       });
@@ -325,8 +350,7 @@ export class GfAccountDetailDialogComponent implements OnInit {
             }
           ],
           range: DEFAULT_DATE_RANGE,
-          withExcludedAccounts: true,
-          withItems: true
+          withExcludedAccounts: true
         })
         .pipe(takeUntilDestroyed(this.destroyRef))
     }).subscribe({
@@ -387,5 +411,12 @@ export class GfAccountDetailDialogComponent implements OnInit {
     this.fetchActivities();
     this.fetchChart();
     this.fetchPortfolioHoldings();
+  }
+
+  private refreshUser() {
+    this.userService
+      .get(true)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 }

@@ -1,14 +1,18 @@
+import { ImpersonationStorageService } from '@ghostfolio/client/services/impersonation-storage.service';
 import { UserService } from '@ghostfolio/client/services/user/user.service';
 import { ASSET_CLASS_MAPPING, DEFAULT_LOCALE } from '@ghostfolio/common/config';
 import { CreateOrderDto, UpdateOrderDto } from '@ghostfolio/common/dtos';
-import { getDateFormatString } from '@ghostfolio/common/helper';
+import {
+  getDateFormatString,
+  getStringOrNull
+} from '@ghostfolio/common/helper';
 import {
   AssetClassSelectorOption,
   LookupItem
 } from '@ghostfolio/common/interfaces';
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
 import { validateObjectForForm } from '@ghostfolio/common/utils';
-import { GfEntityLogoComponent } from '@ghostfolio/ui/entity-logo';
+import { GfAccountSelectorComponent } from '@ghostfolio/ui/account-selector';
 import { translate } from '@ghostfolio/ui/i18n';
 import { DataService } from '@ghostfolio/ui/services';
 import { GfSymbolAutocompleteComponent } from '@ghostfolio/ui/symbol-autocomplete';
@@ -56,7 +60,7 @@ import { ActivityType } from './types/activity-type.type';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'h-100' },
   imports: [
-    GfEntityLogoComponent,
+    GfAccountSelectorComponent,
     GfSymbolAutocompleteComponent,
     GfTagsSelectorComponent,
     GfValueComponent,
@@ -92,9 +96,10 @@ export class GfCreateOrUpdateActivityDialogComponent {
   protected currentMarketPrice: number | null = null;
   protected defaultDateFormat: string;
   protected defaultLookupItems: LookupItem[] = [];
-  protected hasPermissionToCreateOwnTag: boolean | undefined;
+  protected hasPermissionToCreateOwnTag: boolean;
   protected isLoading = false;
   protected readonly isToday = isToday;
+  protected readonly labelAccount = $localize`Account`;
   protected mode: 'create' | 'update';
   protected tagsAvailable: Tag[] = [];
   protected total = 0;
@@ -111,6 +116,9 @@ export class GfCreateOrUpdateActivityDialogComponent {
   private readonly dialogRef =
     inject<MatDialogRef<GfCreateOrUpdateActivityDialogComponent>>(MatDialogRef);
   private readonly formBuilder = inject(FormBuilder);
+  private readonly impersonationStorageService = inject(
+    ImpersonationStorageService
+  );
   private locale = inject<string>(MAT_DATE_LOCALE);
   private readonly userService = inject(UserService);
 
@@ -120,9 +128,13 @@ export class GfCreateOrUpdateActivityDialogComponent {
 
   public ngOnInit() {
     this.currencyOfAssetProfile = this.data.activity?.assetProfile?.currency;
+
+    // A tag created during an impersonation belongs to the authenticated user,
+    // hence it cannot be assigned to the data of the impersonated user
     this.hasPermissionToCreateOwnTag =
-      this.data.user?.settings?.isExperimentalFeatures &&
+      !this.impersonationStorageService.getId() &&
       hasPermission(this.data.user?.permissions, permissions.createOwnTag);
+
     this.locale = this.data.user.settings.locale ?? DEFAULT_LOCALE;
     this.mode = this.data.activity?.id ? 'update' : 'create';
 
@@ -265,16 +277,9 @@ export class GfCreateOrUpdateActivityDialogComponent {
 
         this.activityForm.get('currency')?.setValue(currency);
         this.activityForm.get('currencyOfUnitPrice')?.setValue(currency);
-
-        if (['FEE', 'INTEREST'].includes(type)) {
-          if (this.activityForm.get('accountId')?.value) {
-            this.activityForm.get('updateAccountBalance')?.enable();
-          } else {
-            this.activityForm.get('updateAccountBalance')?.disable();
-            this.activityForm.get('updateAccountBalance')?.setValue(false);
-          }
-        }
       }
+
+      this.syncUpdateAccountBalanceControl();
     });
 
     this.activityForm
@@ -298,12 +303,7 @@ export class GfCreateOrUpdateActivityDialogComponent {
       });
 
     this.activityForm.get('date')?.valueChanges.subscribe(() => {
-      if (isToday(this.activityForm.get('date')?.value)) {
-        this.activityForm.get('updateAccountBalance')?.enable();
-      } else {
-        this.activityForm.get('updateAccountBalance')?.disable();
-        this.activityForm.get('updateAccountBalance')?.setValue(false);
-      }
+      this.syncUpdateAccountBalanceControl();
 
       this.changeDetectorRef.markForCheck();
     });
@@ -383,8 +383,6 @@ export class GfCreateOrUpdateActivityDialogComponent {
             .get('searchSymbol')
             ?.removeValidators(Validators.required);
           this.activityForm.get('searchSymbol')?.updateValueAndValidity();
-          this.activityForm.get('updateAccountBalance')?.disable();
-          this.activityForm.get('updateAccountBalance')?.setValue(false);
         } else if (['FEE', 'INTEREST', 'LIABILITY'].includes(type)) {
           const currency =
             this.data.accounts.find(({ id }) => {
@@ -420,16 +418,6 @@ export class GfCreateOrUpdateActivityDialogComponent {
           if (type === 'FEE') {
             this.activityForm.get('unitPrice')?.setValue(0);
           }
-
-          if (
-            ['FEE', 'INTEREST'].includes(type) &&
-            this.activityForm.get('accountId')?.value
-          ) {
-            this.activityForm.get('updateAccountBalance')?.enable();
-          } else {
-            this.activityForm.get('updateAccountBalance')?.disable();
-            this.activityForm.get('updateAccountBalance')?.setValue(false);
-          }
         } else {
           this.activityForm
             .get('dataSource')
@@ -441,8 +429,9 @@ export class GfCreateOrUpdateActivityDialogComponent {
             .get('searchSymbol')
             ?.setValidators(Validators.required);
           this.activityForm.get('searchSymbol')?.updateValueAndValidity();
-          this.activityForm.get('updateAccountBalance')?.enable();
         }
+
+        this.syncUpdateAccountBalanceControl();
 
         this.changeDetectorRef.markForCheck();
       });
@@ -493,7 +482,7 @@ export class GfCreateOrUpdateActivityDialogComponent {
       accountId: this.activityForm.get('accountId')?.value,
       assetClass: this.activityForm.get('assetClass')?.value,
       assetSubClass: this.activityForm.get('assetSubClass')?.value,
-      comment: this.activityForm.get('comment')?.value ?? null,
+      comment: getStringOrNull(this.activityForm.get('comment')?.value),
       currency: this.activityForm.get('currency')?.value,
       customCurrency: this.activityForm.get('currencyOfUnitPrice')?.value,
       dataSource: ['FEE', 'INTEREST', 'LIABILITY', 'VALUABLE'].includes(
@@ -555,6 +544,27 @@ export class GfCreateOrUpdateActivityDialogComponent {
       }
     } catch (error) {
       console.error(error);
+    }
+  }
+
+  private syncUpdateAccountBalanceControl() {
+    const accountBalanceControl = this.activityForm.get('updateAccountBalance');
+    const accountId = this.activityForm.get('accountId')?.value;
+    const dataSource = this.activityForm.get('dataSource')?.value;
+    const date = this.activityForm.get('date')?.value;
+    const type = this.activityForm.get('type')?.value;
+
+    const isEligible =
+      !!accountId &&
+      isToday(date) &&
+      !['LIABILITY', 'VALUABLE'].includes(type) &&
+      !(dataSource === 'MANUAL' && type === 'BUY');
+
+    if (isEligible) {
+      accountBalanceControl?.enable();
+    } else {
+      accountBalanceControl?.disable();
+      accountBalanceControl?.setValue(false);
     }
   }
 

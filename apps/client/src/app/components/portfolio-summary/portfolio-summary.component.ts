@@ -18,9 +18,11 @@ import { IonIcon } from '@ionic/angular/standalone';
 import { formatDistanceToNow } from 'date-fns';
 import { addIcons } from 'ionicons';
 import {
+  caretForwardOutline,
   ellipsisHorizontalCircleOutline,
   informationCircleOutline
 } from 'ionicons/icons';
+import { isNumber } from 'lodash';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,18 +48,25 @@ export class GfPortfolioSummaryComponent implements OnChanges {
     'BUY_AND_SELL_ACTIVITIES_TOOLTIP'
   );
 
+  protected isCashExpanded = false;
+  protected isHoldingsExpanded = false;
   protected precision = 2;
   protected timeInMarket: string | undefined;
 
   private readonly notificationService = inject(NotificationService);
 
   public constructor() {
-    addIcons({ ellipsisHorizontalCircleOutline, informationCircleOutline });
+    addIcons({
+      caretForwardOutline,
+      ellipsisHorizontalCircleOutline,
+      informationCircleOutline
+    });
   }
 
-  protected get buyingPowerPercentage() {
+  protected get cashPercentage() {
     return this.summary?.totalValueInBaseCurrency
-      ? this.summary.cash / this.summary.totalValueInBaseCurrency
+      ? this.summary.totalCashInBaseCurrency /
+          this.summary.totalValueInBaseCurrency
       : 0;
   }
 
@@ -73,6 +82,45 @@ export class GfPortfolioSummaryComponent implements OnChanges {
       ? this.summary.excludedAccountsAndActivities /
           this.summary.totalValueInBaseCurrency
       : 0;
+  }
+
+  protected get hasCashBreakdown() {
+    return !this.isLoading && this.summary?.emergencyFund?.cash > 0;
+  }
+
+  protected get hasHoldingsBreakdown() {
+    return !this.isLoading && this.summary?.emergencyFund?.assets > 0;
+  }
+
+  protected get holdingsInBaseCurrency() {
+    if (
+      !isNumber(this.summary?.totalAssetsInBaseCurrency) ||
+      !isNumber(this.summary?.totalCashInBaseCurrency)
+    ) {
+      return null;
+    }
+
+    return (
+      this.summary.totalAssetsInBaseCurrency -
+      this.summary.totalCashInBaseCurrency
+    );
+  }
+
+  protected get holdingsPercentage() {
+    return this.summary?.totalValueInBaseCurrency &&
+      isNumber(this.holdingsInBaseCurrency)
+      ? this.holdingsInBaseCurrency / this.summary.totalValueInBaseCurrency
+      : 0;
+  }
+
+  protected get investmentsInBaseCurrency() {
+    if (!isNumber(this.holdingsInBaseCurrency)) {
+      return null;
+    }
+
+    return (
+      this.holdingsInBaseCurrency - (this.summary.emergencyFund?.assets ?? 0)
+    );
   }
 
   public ngOnChanges() {
@@ -93,7 +141,7 @@ export class GfPortfolioSummaryComponent implements OnChanges {
           }
         );
       } else {
-        this.timeInMarket = '-';
+        this.timeInMarket = '–';
       }
     } else {
       this.timeInMarket = undefined;
@@ -111,5 +159,13 @@ export class GfPortfolioSummaryComponent implements OnChanges {
       defaultValue: this.summary.emergencyFund?.total?.toString() ?? '0',
       title: $localize`Please set the amount of your emergency fund.`
     });
+  }
+
+  protected onToggleCash() {
+    this.isCashExpanded = !this.isCashExpanded;
+  }
+
+  protected onToggleHoldings() {
+    this.isHoldingsExpanded = !this.isHoldingsExpanded;
   }
 }

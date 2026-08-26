@@ -3,6 +3,7 @@
     <div class="col">
       <h1 class="d-none d-sm-block h3 mb-3 text-center" i18n>Activities</h1>
       <gf-activities-table
+        [activityTypes]="user?.activityTypes"
         [baseCurrency]="user?.settings?.baseCurrency"
         [dataSource]="dataSource"
         [deviceType]="deviceType"
@@ -11,12 +12,15 @@
         [hasPermissionToDeleteActivity]="hasPermissionToDeleteActivity"
         [hasPermissionToExportActivities]="!hasImpersonationId"
         [hasPermissionToFilterByType]="user?.settings?.isExperimentalFeatures"
+        [hasPermissionToImportActivities]="hasPermissionToImportActivities"
+        [hasPermissionToUpdateActivity]="hasPermissionToUpdateActivity"
         [locale]="user?.settings?.locale"
         [pageIndex]="pageIndex"
         [pageSize]="pageSize"
         [showActions]="
-          !hasImpersonationId &&
-          hasPermissionToDeleteActivity &&
+          (hasPermissionToCreateActivity ||
+            hasPermissionToDeleteActivity ||
+            hasPermissionToUpdateActivity) &&
           !user.settings.isRestrictedView
         "
         [sortColumn]="sortColumn"
@@ -36,11 +40,7 @@
     </div>
   </div>
 
-  @if (
-    !hasImpersonationId &&
-    hasPermissionToCreateActivity &&
-    !user.settings.isRestrictedView
-  ) {
+  @if (hasPermissionToCreateActivity) {
     <gf-fab
       [routerLink]="
         internalRoutes.portfolio.subRoutes.activities.subRoutes.create

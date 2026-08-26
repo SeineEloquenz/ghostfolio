@@ -16,6 +16,8 @@ export class TrackinsightDataEnhancerService implements DataEnhancerInterface {
   private static baseUrl = 'https://www.trackinsight.com';
 
   private static countriesMapping = {
+    'Czech Republic': 'CZ',
+    Macau: 'MO',
     'Republic of Korea': 'KR',
     'Russian Federation': 'RU',
     Turkey: 'TR',
@@ -50,12 +52,10 @@ export class TrackinsightDataEnhancerService implements DataEnhancerInterface {
     response: Partial<SymbolProfile>;
     symbol: string;
   }): Promise<Partial<SymbolProfile>> {
-    if (
-      !(
-        response.assetClass === 'EQUITY' &&
-        ['ETF', 'MUTUALFUND'].includes(response.assetSubClass)
-      )
-    ) {
+    if (!(
+      response.assetClass === 'EQUITY' &&
+      ['ETF', 'MUTUALFUND'].includes(response.assetSubClass)
+    )) {
       return response;
     }
 
@@ -127,13 +127,15 @@ export class TrackinsightDataEnhancerService implements DataEnhancerInterface {
       for (const [name, value] of Object.entries<any>(
         holdings?.countries ?? {}
       )) {
-        response.countries.push({
-          code: getCountryCodeByName({
-            name,
-            aliases: TrackinsightDataEnhancerService.countriesMapping
-          }),
-          weight: value.weight
+        const code = getCountryCodeByName({
+          name,
+          aliases: TrackinsightDataEnhancerService.countriesMapping,
+          dataSource: this.getName()
         });
+
+        if (code) {
+          response.countries.push({ code, weight: value.weight });
+        }
       }
     }
 
@@ -214,8 +216,8 @@ export class TrackinsightDataEnhancerService implements DataEnhancerInterface {
         return undefined;
       })
       .catch(({ message }) => {
-        this.logger.error(
-          `Failed to search Trackinsight symbol for ${symbol} (${message})`
+        this.logger.warn(
+          `Could not search Trackinsight symbol for "${symbol}": ${message}`
         );
 
         return undefined;

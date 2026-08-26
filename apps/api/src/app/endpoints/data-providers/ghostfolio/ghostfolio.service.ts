@@ -13,11 +13,16 @@ import { FetchService } from '@ghostfolio/api/services/fetch/fetch.service';
 import { PrismaService } from '@ghostfolio/api/services/prisma/prisma.service';
 import { PropertyService } from '@ghostfolio/api/services/property/property.service';
 import {
+  DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_SETUP_PERIOD,
+  DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_SETUP_PERIOD_MAX_REQUESTS_FACTOR,
   DEFAULT_CURRENCY,
-  DERIVED_CURRENCIES
+  DERIVED_CURRENCIES,
+  PROPERTY_DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_MAX_REQUESTS
 } from '@ghostfolio/common/config';
-import { PROPERTY_DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_MAX_REQUESTS } from '@ghostfolio/common/config';
-import { getAssetProfileIdentifier } from '@ghostfolio/common/helper';
+import {
+  getAssetProfileIdentifier,
+  isValidSearchQuery
+} from '@ghostfolio/common/helper';
 import {
   DataProviderGhostfolioAssetProfileResponse,
   DataProviderHistoricalResponse,
@@ -34,6 +39,7 @@ import { UserWithSettings } from '@ghostfolio/common/types';
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, SymbolProfile } from '@prisma/client';
 import { Big } from 'big.js';
+import { addMilliseconds, isBefore } from 'date-fns';
 import { isEmpty } from 'lodash';
 
 @Injectable()
@@ -112,7 +118,7 @@ export class GhostfolioService {
 
       return result;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message);
 
       throw error;
     }
@@ -154,7 +160,7 @@ export class GhostfolioService {
 
       return result;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message);
 
       throw error;
     }
@@ -196,7 +202,7 @@ export class GhostfolioService {
 
       return result;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message);
 
       throw error;
     }
@@ -223,19 +229,10 @@ export class GhostfolioService {
 
       return marketDataOfMarkets;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message);
 
       throw error;
     }
-  }
-
-  public async getMaxDailyRequests() {
-    return parseInt(
-      (await this.propertyService.getByKey<string>(
-        PROPERTY_DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_MAX_REQUESTS
-      )) || '0',
-      10
-    );
   }
 
   public async getQuotes({ requestTimeout, symbols }: GetQuotesParams) {
@@ -311,27 +308,61 @@ export class GhostfolioService {
 
       return results;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message);
 
       throw error;
     }
   }
 
   public async getStatus({ user }: { user: UserWithSettings }) {
+    const dailyRequestsMax = await this.getMaxDailyRequests();
+
     return {
-      dailyRequests: user.dataProviderGhostfolioDailyRequests,
-      dailyRequestsMax: await this.getMaxDailyRequests(),
+      dailyRequestsMax,
+      // Cap the reported requests, as they can exceed the reported limit
+      // within the setup period
+      dailyRequests: Math.min(
+        dailyRequestsMax,
+        user.dataProviderGhostfolioDailyRequests
+      ),
+      isWithinSetupPeriod: this.isWithinSetupPeriod({ user }),
       subscription: user.subscription
     };
   }
 
   public async incrementDailyRequests({ userId }: { userId: string }) {
-    await this.prismaService.analytics.update({
-      data: {
+    await this.prismaService.analytics.upsert({
+      create: {
+        dataProviderGhostfolioDailyRequests: 1,
+        user: { connect: { id: userId } }
+      },
+      update: {
         dataProviderGhostfolioDailyRequests: { increment: 1 }
       },
       where: { userId }
     });
+  }
+
+  public async isDailyRequestLimitExceeded({
+    user
+  }: {
+    user: UserWithSettings;
+  }) {
+    const maxDailyRequests = await this.getMaxDailyRequests();
+
+    if (user.dataProviderGhostfolioDailyRequests < maxDailyRequests) {
+      return false;
+    }
+
+    if (this.isWithinSetupPeriod({ user })) {
+      return (
+        user.dataProviderGhostfolioDailyRequests >=
+        maxDailyRequests *
+          DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_SETUP_PERIOD_MAX_REQUESTS_FACTOR
+      );
+    }
+
+    return true;
   }
 
   public async lookup({
@@ -340,17 +371,15 @@ export class GhostfolioService {
   }: GetSearchParams): Promise<LookupResponse> {
     const results: LookupResponse = { items: [] };
 
-    if (!query) {
+    query = query?.trim();
+
+    if (!isValidSearchQuery(query)) {
       return results;
     }
 
     try {
       let lookupItems: LookupItem[] = [];
       const promises: Promise<{ items: LookupItem[] }>[] = [];
-
-      if (query?.length < 2) {
-        return { items: lookupItems };
-      }
 
       for (const dataProviderService of this.getDataProviderServices()) {
         promises.push(
@@ -388,7 +417,7 @@ export class GhostfolioService {
 
       return results;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message);
 
       throw error;
     }
@@ -414,5 +443,30 @@ export class GhostfolioService {
       .map((dataSource) => {
         return this.dataProviderService.getDataProvider(DataSource[dataSource]);
       });
+  }
+
+  private async getMaxDailyRequests() {
+    return parseInt(
+      (await this.propertyService.getByKey<string>(
+        PROPERTY_DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_MAX_REQUESTS
+      )) || '0',
+      10
+    );
+  }
+
+  private isWithinSetupPeriod({ user }: { user: UserWithSettings }) {
+    const subscribedAt = user.subscription?.subscribedAt;
+
+    if (!subscribedAt) {
+      return false;
+    }
+
+    return isBefore(
+      new Date(),
+      addMilliseconds(
+        subscribedAt,
+        DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER_SETUP_PERIOD
+      )
+    );
   }
 }

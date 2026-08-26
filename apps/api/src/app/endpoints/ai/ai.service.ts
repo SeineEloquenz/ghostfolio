@@ -5,22 +5,26 @@ import {
   PROPERTY_API_KEY_OPENROUTER,
   PROPERTY_OPENROUTER_MODEL
 } from '@ghostfolio/common/config';
+import { DATE_FORMAT } from '@ghostfolio/common/helper';
 import { Filter } from '@ghostfolio/common/interfaces';
 import type { AiPromptMode } from '@ghostfolio/common/types';
 
 import { Injectable } from '@nestjs/common';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText } from 'ai';
+import { format } from 'date-fns';
 import type { ColumnDescriptor } from 'tablemark';
 
 @Injectable()
 export class AiService {
   private static readonly HOLDINGS_TABLE_COLUMN_DEFINITIONS: ({
     key:
+      | 'ACTIVITIES_COUNT'
       | 'ALLOCATION_PERCENTAGE'
       | 'ASSET_CLASS'
       | 'ASSET_SUB_CLASS'
       | 'CURRENCY'
+      | 'DATE_OF_FIRST_ACTIVITY'
       | 'NAME'
       | 'SYMBOL';
   } & ColumnDescriptor)[] = [
@@ -29,6 +33,8 @@ export class AiService {
     { key: 'CURRENCY', name: 'Currency' },
     { key: 'ASSET_CLASS', name: 'Asset Class' },
     { key: 'ASSET_SUB_CLASS', name: 'Asset Sub Class' },
+    { key: 'DATE_OF_FIRST_ACTIVITY', name: 'Date of First Activity' },
+    { align: 'right', key: 'ACTIVITIES_COUNT', name: 'Activities Count' },
     {
       align: 'right',
       key: 'ALLOCATION_PERCENTAGE',
@@ -41,6 +47,12 @@ export class AiService {
     private readonly portfolioService: PortfolioService,
     private readonly propertyService: PropertyService
   ) {}
+
+  public static getHoldingsTableColumnNames() {
+    return AiService.HOLDINGS_TABLE_COLUMN_DEFINITIONS.map(({ name }) => {
+      return name;
+    });
+  }
 
   public async generateText({
     prompt,
@@ -70,14 +82,12 @@ export class AiService {
 
   public async getPrompt({
     filters,
-    impersonationId,
     languageCode,
     mode,
     userCurrency,
     userId
   }: {
     filters?: Filter[];
-    impersonationId: string;
     languageCode: string;
     mode: AiPromptMode;
     userCurrency: string;
@@ -85,7 +95,6 @@ export class AiService {
   }) {
     const { holdings } = await this.portfolioService.getDetails({
       filters,
-      impersonationId,
       userId
     });
 
@@ -100,6 +109,7 @@ export class AiService {
       })
       .map(
         ({
+          activitiesCount,
           allocationInPercentage,
           assetProfile: {
             assetClass,
@@ -107,11 +117,16 @@ export class AiService {
             currency,
             name: label,
             symbol
-          }
+          },
+          dateOfFirstActivity
         }) => {
           return AiService.HOLDINGS_TABLE_COLUMN_DEFINITIONS.reduce(
             (row, { key, name }) => {
               switch (key) {
+                case 'ACTIVITIES_COUNT':
+                  row[name] = activitiesCount.toString();
+                  break;
+
                 case 'ALLOCATION_PERCENTAGE':
                   row[name] = `${(allocationInPercentage * 100).toFixed(3)}%`;
                   break;
@@ -126,6 +141,12 @@ export class AiService {
 
                 case 'CURRENCY':
                   row[name] = currency;
+                  break;
+
+                case 'DATE_OF_FIRST_ACTIVITY':
+                  row[name] = dateOfFirstActivity
+                    ? format(dateOfFirstActivity, DATE_FORMAT)
+                    : '';
                   break;
 
                 case 'NAME':
@@ -155,17 +176,21 @@ export class AiService {
     ) => Promise<typeof import('tablemark')>;
     const { tablemark } = await dynamicImport('tablemark');
 
-    const holdingsTableString = tablemark(holdingsTableRows, {
-      columns: holdingsTableColumns
-    });
+    const holdingsSection = [
+      '## Holdings',
+      '',
+      tablemark(holdingsTableRows, {
+        columns: holdingsTableColumns
+      })
+    ].join('\n');
 
     if (mode === 'portfolio') {
-      return holdingsTableString;
+      return holdingsSection;
     }
 
     return [
       `You are a neutral financial assistant. Please analyze the following investment portfolio (base currency being ${userCurrency}) in simple words.`,
-      holdingsTableString,
+      holdingsSection,
       'Structure your answer with these sections:',
       'Overview: Briefly summarize the portfolio’s composition and allocation rationale.',
       'Risk Assessment: Identify potential risks, including market volatility, concentration, and sectoral imbalances.',

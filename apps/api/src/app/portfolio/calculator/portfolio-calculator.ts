@@ -1,4 +1,6 @@
 import { CurrentRateService } from '@ghostfolio/api/app/portfolio/current-rate.service';
+import { PortfolioSnapshotComputationError } from '@ghostfolio/api/app/portfolio/errors/portfolio-snapshot-computation.error';
+import { PortfolioCalculatorPosition } from '@ghostfolio/api/app/portfolio/interfaces/portfolio-calculator-position.interface';
 import { PortfolioOrder } from '@ghostfolio/api/app/portfolio/interfaces/portfolio-order.interface';
 import { PortfolioSnapshotValue } from '@ghostfolio/api/app/portfolio/interfaces/snapshot-value.interface';
 import { TransactionPointSymbol } from '@ghostfolio/api/app/portfolio/interfaces/transaction-point-symbol.interface';
@@ -34,7 +36,7 @@ import {
   ResponseError,
   SymbolMetrics
 } from '@ghostfolio/common/interfaces';
-import { PortfolioSnapshot, TimelinePosition } from '@ghostfolio/common/models';
+import { PortfolioSnapshot } from '@ghostfolio/common/models';
 import { GroupBy } from '@ghostfolio/common/types';
 import { PerformanceCalculationType } from '@ghostfolio/common/types/performance-calculation-type.type';
 
@@ -51,21 +53,28 @@ import {
   format,
   isAfter,
   isBefore,
+  isFuture,
+  isPast,
   isWithinInterval,
   min,
   startOfDay,
   startOfYear,
   subDays
 } from 'date-fns';
-import { isNumber, sortBy, sum, uniqBy } from 'lodash';
+import { groupBy, isNumber, sortBy, sum, uniqBy } from 'lodash';
 
 export abstract class PortfolioCalculator {
   protected static readonly ENABLE_LOGGING = false;
+
+  private static readonly MAX_INITIALIZATION_ATTEMPTS = 3;
 
   protected readonly logger = new Logger(PortfolioCalculator.name);
 
   protected accountBalanceItems: HistoricalDataItem[];
   protected activities: PortfolioOrder[];
+  protected activitiesBySymbol: {
+    [symbol: string]: PortfolioOrder[];
+  };
 
   private configurationService: ConfigurationService;
   private currency: string;
@@ -134,7 +143,7 @@ export abstract class PortfolioCalculator {
             dateOfFirstActivity = date;
           }
 
-          if (isAfter(date, new Date())) {
+          if (isFuture(date)) {
             // Adapt date to today if activity is in future (e.g. liability)
             // to include it in the interval
             date = endOfDay(new Date());
@@ -156,6 +165,10 @@ export abstract class PortfolioCalculator {
         return a.date?.localeCompare(b.date);
       });
 
+    this.activitiesBySymbol = groupBy(this.activities, ({ assetProfile }) => {
+      return assetProfile.symbol;
+    });
+
     this.portfolioSnapshotService = portfolioSnapshotService;
     this.redisCacheService = redisCacheService;
     this.userId = userId;
@@ -171,10 +184,15 @@ export abstract class PortfolioCalculator {
     this.computeTransactionPoints();
 
     this.snapshotPromise = this.initialize();
+
+    // Mark the rejection as handled to prevent an unhandled promise rejection
+    // in case the snapshot promise is never awaited. Consumers awaiting it
+    // still receive the error.
+    this.snapshotPromise.catch(() => undefined);
   }
 
   protected abstract calculateOverallPerformance(
-    positions: TimelinePosition[]
+    positions: PortfolioCalculatorPosition[]
   ): PortfolioSnapshot;
 
   @LogPerformance
@@ -194,6 +212,7 @@ export abstract class PortfolioCalculator {
         hasErrors: false,
         historicalData: [],
         positions: [],
+        totalCashInBaseCurrency: new Big(0),
         totalFeesWithCurrencyEffect: new Big(0),
         totalInterestWithCurrencyEffect: new Big(0),
         totalInvestment: new Big(0),
@@ -202,10 +221,12 @@ export abstract class PortfolioCalculator {
       };
     }
 
+    const cashSymbols = new Set<string>();
     const currencies: { [symbol: string]: string } = {};
     const dataGatheringItems: DataGatheringItem[] = [];
     let firstIndex = transactionPoints.length;
     let firstTransactionPoint: TransactionPoint = null;
+    let totalCashInBaseCurrency = new Big(0);
     let totalInterestWithCurrencyEffect = new Big(0);
     let totalLiabilitiesWithCurrencyEffect = new Big(0);
 
@@ -307,20 +328,19 @@ export abstract class PortfolioCalculator {
     const errors: ResponseError['errors'] = [];
     let hasAnySymbolMetricsErrors = false;
 
-    const positions: (TimelinePosition & {
-      includeInHoldings: boolean;
-    })[] = [];
+    const positions: PortfolioCalculatorPosition[] = [];
 
     const accumulatedValuesByDate: {
       [date: string]: {
         investmentValueWithCurrencyEffect: Big;
-        totalAccountBalanceWithCurrencyEffect: Big;
+        totalCashValueWithCurrencyEffect: Big;
         totalCurrentValue: Big;
         totalCurrentValueWithCurrencyEffect: Big;
         totalInvestmentValue: Big;
         totalInvestmentValueWithCurrencyEffect: Big;
         totalNetPerformanceValue: Big;
         totalNetPerformanceValueWithCurrencyEffect: Big;
+        totalNetWorthValueWithCurrencyEffect: Big;
         totalTimeWeightedInvestmentValue: Big;
         totalTimeWeightedInvestmentValueWithCurrencyEffect: Big;
       };
@@ -335,6 +355,7 @@ export abstract class PortfolioCalculator {
         investmentValuesWithCurrencyEffect: { [date: string]: Big };
         netPerformanceValues: { [date: string]: Big };
         netPerformanceValuesWithCurrencyEffect: { [date: string]: Big };
+        netWorthValuesWithCurrencyEffect: { [date: string]: Big };
         timeWeightedInvestmentValues: { [date: string]: Big };
         timeWeightedInvestmentValuesWithCurrencyEffect: { [date: string]: Big };
       };
@@ -348,6 +369,13 @@ export abstract class PortfolioCalculator {
           endDateString
         ] ?? 1
       );
+
+      const valueInBaseCurrency = marketPriceInBaseCurrency.mul(item.quantity);
+
+      const isCashInBaseCurrency =
+        item.assetSubClass === AssetSubClass.CASH &&
+        item.currency === this.currency &&
+        item.symbol === this.currency;
 
       const {
         currentValues,
@@ -389,25 +417,37 @@ export abstract class PortfolioCalculator {
 
       hasAnySymbolMetricsErrors = hasAnySymbolMetricsErrors || hasErrors;
 
-      const includeInTotalAssetValue =
-        item.assetSubClass !== AssetSubClass.CASH;
-
-      if (includeInTotalAssetValue) {
-        valuesBySymbol[item.symbol] = {
-          currentValues,
-          currentValuesWithCurrencyEffect,
-          investmentValuesAccumulated,
-          investmentValuesAccumulatedWithCurrencyEffect,
-          investmentValuesWithCurrencyEffect,
-          netPerformanceValues,
-          netPerformanceValuesWithCurrencyEffect,
-          timeWeightedInvestmentValues,
-          timeWeightedInvestmentValuesWithCurrencyEffect
-        };
-      }
+      // Cash in the base currency cannot generate a currency effect and thus
+      // contributes nothing but its balance to the performance calculation. It
+      // is therefore excluded from the value and the investment, while still
+      // contributing to the net worth.
+      valuesBySymbol[item.symbol] = isCashInBaseCurrency
+        ? {
+            currentValues: {},
+            currentValuesWithCurrencyEffect: {},
+            investmentValuesAccumulated: {},
+            investmentValuesAccumulatedWithCurrencyEffect: {},
+            investmentValuesWithCurrencyEffect: {},
+            netPerformanceValues: {},
+            netPerformanceValuesWithCurrencyEffect: {},
+            netWorthValuesWithCurrencyEffect: currentValuesWithCurrencyEffect,
+            timeWeightedInvestmentValues: {},
+            timeWeightedInvestmentValuesWithCurrencyEffect: {}
+          }
+        : {
+            currentValues,
+            currentValuesWithCurrencyEffect,
+            investmentValuesAccumulated,
+            investmentValuesAccumulatedWithCurrencyEffect,
+            investmentValuesWithCurrencyEffect,
+            netPerformanceValues,
+            netPerformanceValuesWithCurrencyEffect,
+            timeWeightedInvestmentValues,
+            timeWeightedInvestmentValuesWithCurrencyEffect,
+            netWorthValuesWithCurrencyEffect: currentValuesWithCurrencyEffect
+          };
 
       positions.push({
-        includeInTotalAssetValue,
         timeWeightedInvestment,
         timeWeightedInvestmentWithCurrencyEffect,
         activitiesCount: item.activitiesCount,
@@ -430,6 +470,7 @@ export abstract class PortfolioCalculator {
           ? (grossPerformanceWithCurrencyEffect ?? null)
           : null,
         includeInHoldings: item.includeInHoldings,
+        includeInPerformance: !isCashInBaseCurrency,
         investment: totalInvestment,
         investmentWithCurrencyEffect: totalInvestmentWithCurrencyEffect,
         marketPrice:
@@ -448,10 +489,15 @@ export abstract class PortfolioCalculator {
         quantity: item.quantity,
         symbol: item.symbol,
         tags: item.tags,
-        valueInBaseCurrency: new Big(marketPriceInBaseCurrency).mul(
-          item.quantity
-        )
+        valueInBaseCurrency
       });
+
+      if (item.assetSubClass === AssetSubClass.CASH) {
+        cashSymbols.add(item.symbol);
+
+        totalCashInBaseCurrency =
+          totalCashInBaseCurrency.plus(valueInBaseCurrency);
+      }
 
       totalInterestWithCurrencyEffect = totalInterestWithCurrencyEffect.plus(
         totalInterestInBaseCurrency
@@ -472,28 +518,7 @@ export abstract class PortfolioCalculator {
       }
     }
 
-    const accountBalanceItemsMap = this.accountBalanceItems.reduce(
-      (map, { date, value }) => {
-        map[date] = new Big(value);
-
-        return map;
-      },
-      {} as { [date: string]: Big }
-    );
-
-    const accountBalanceMap: { [date: string]: Big } = {};
-
-    let lastKnownBalance = new Big(0);
-
     for (const dateString of chartDates) {
-      if (accountBalanceItemsMap[dateString] !== undefined) {
-        // If there's an exact balance for this date, update lastKnownBalance
-        lastKnownBalance = accountBalanceItemsMap[dateString];
-      }
-
-      // Add the most recent balance to the accountBalanceMap
-      accountBalanceMap[dateString] = lastKnownBalance;
-
       for (const symbol of Object.keys(valuesBySymbol)) {
         const symbolValues = valuesBySymbol[symbol];
 
@@ -523,6 +548,10 @@ export abstract class PortfolioCalculator {
           symbolValues.netPerformanceValuesWithCurrencyEffect?.[dateString] ??
           new Big(0);
 
+        const netWorthValueWithCurrencyEffect =
+          symbolValues.netWorthValuesWithCurrencyEffect?.[dateString] ??
+          new Big(0);
+
         const timeWeightedInvestmentValue =
           symbolValues.timeWeightedInvestmentValues?.[dateString] ?? new Big(0);
 
@@ -536,7 +565,14 @@ export abstract class PortfolioCalculator {
             accumulatedValuesByDate[dateString]
               ?.investmentValueWithCurrencyEffect ?? new Big(0)
           ).add(investmentValueWithCurrencyEffect),
-          totalAccountBalanceWithCurrencyEffect: accountBalanceMap[dateString],
+          totalCashValueWithCurrencyEffect: (
+            accumulatedValuesByDate[dateString]
+              ?.totalCashValueWithCurrencyEffect ?? new Big(0)
+          ).add(
+            cashSymbols.has(symbol)
+              ? netWorthValueWithCurrencyEffect
+              : new Big(0)
+          ),
           totalCurrentValue: (
             accumulatedValuesByDate[dateString]?.totalCurrentValue ?? new Big(0)
           ).add(currentValue),
@@ -560,6 +596,10 @@ export abstract class PortfolioCalculator {
             accumulatedValuesByDate[dateString]
               ?.totalNetPerformanceValueWithCurrencyEffect ?? new Big(0)
           ).add(netPerformanceValueWithCurrencyEffect),
+          totalNetWorthValueWithCurrencyEffect: (
+            accumulatedValuesByDate[dateString]
+              ?.totalNetWorthValueWithCurrencyEffect ?? new Big(0)
+          ).add(netWorthValueWithCurrencyEffect),
           totalTimeWeightedInvestmentValue: (
             accumulatedValuesByDate[dateString]
               ?.totalTimeWeightedInvestmentValue ?? new Big(0)
@@ -577,13 +617,14 @@ export abstract class PortfolioCalculator {
     ).map(([date, values]) => {
       const {
         investmentValueWithCurrencyEffect,
-        totalAccountBalanceWithCurrencyEffect,
+        totalCashValueWithCurrencyEffect,
         totalCurrentValue,
         totalCurrentValueWithCurrencyEffect,
         totalInvestmentValue,
         totalInvestmentValueWithCurrencyEffect,
         totalNetPerformanceValue,
         totalNetPerformanceValueWithCurrencyEffect,
+        totalNetWorthValueWithCurrencyEffect,
         totalTimeWeightedInvestmentValue,
         totalTimeWeightedInvestmentValueWithCurrencyEffect
       } = values;
@@ -610,10 +651,8 @@ export abstract class PortfolioCalculator {
         netPerformance: totalNetPerformanceValue.toNumber(),
         netPerformanceWithCurrencyEffect:
           totalNetPerformanceValueWithCurrencyEffect.toNumber(),
-        netWorth: totalCurrentValueWithCurrencyEffect
-          .plus(totalAccountBalanceWithCurrencyEffect)
-          .toNumber(),
-        totalAccountBalance: totalAccountBalanceWithCurrencyEffect.toNumber(),
+        netWorth: totalNetWorthValueWithCurrencyEffect.toNumber(),
+        totalCashInBaseCurrency: totalCashValueWithCurrencyEffect.toNumber(),
         totalInvestment: totalInvestmentValue.toNumber(),
         totalInvestmentValueWithCurrencyEffect:
           totalInvestmentValueWithCurrencyEffect.toNumber(),
@@ -629,7 +668,7 @@ export abstract class PortfolioCalculator {
         return includeInHoldings;
       })
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      .map(({ includeInHoldings, ...rest }) => {
+      .map(({ includeInHoldings, includeInPerformance, ...rest }) => {
         return rest;
       });
 
@@ -637,6 +676,7 @@ export abstract class PortfolioCalculator {
       ...overall,
       errors,
       historicalData,
+      totalCashInBaseCurrency,
       totalInterestWithCurrencyEffect,
       totalLiabilitiesWithCurrencyEffect,
       hasErrors: hasAnySymbolMetricsErrors || overall.hasErrors,
@@ -774,11 +814,6 @@ export abstract class PortfolioCalculator {
               ? 0
               : netPerformanceWithCurrencyEffectSinceStartDate /
                 timeWeightedInvestmentValue
-          // TODO: Add net worth
-          // netWorth: totalCurrentValueWithCurrencyEffect
-          //   .plus(totalAccountBalanceWithCurrencyEffect)
-          //   .toNumber()
-          // netWorth: 0
         });
       }
     }
@@ -796,25 +831,39 @@ export abstract class PortfolioCalculator {
     let firstAccountBalanceDate: Date;
     let firstActivityDate: Date;
 
-    try {
-      const firstAccountBalanceDateString = this.accountBalanceItems[0]?.date;
-      firstAccountBalanceDate = firstAccountBalanceDateString
-        ? parseDate(firstAccountBalanceDateString)
-        : new Date();
-    } catch (error) {
-      firstAccountBalanceDate = new Date();
+    if (this.accountBalanceItems?.length > 0) {
+      try {
+        const firstAccountBalanceDateString = this.accountBalanceItems[0].date;
+        firstAccountBalanceDate = firstAccountBalanceDateString
+          ? parseDate(firstAccountBalanceDateString)
+          : new Date();
+      } catch (error) {
+        firstAccountBalanceDate = new Date();
+      }
     }
 
-    try {
-      const firstActivityDateString = this.transactionPoints[0].date;
-      firstActivityDate = firstActivityDateString
-        ? parseDate(firstActivityDateString)
-        : new Date();
-    } catch (error) {
-      firstActivityDate = new Date();
+    if (this.transactionPoints?.length > 0) {
+      try {
+        const firstActivityDateString = this.transactionPoints[0].date;
+        firstActivityDate = firstActivityDateString
+          ? parseDate(firstActivityDateString)
+          : new Date();
+      } catch (error) {
+        firstActivityDate = new Date();
+      }
     }
 
-    return min([firstAccountBalanceDate, firstActivityDate]);
+    const dates = [firstAccountBalanceDate, firstActivityDate].filter(
+      (date) => {
+        return !!date;
+      }
+    );
+
+    if (dates.length === 0) {
+      return undefined;
+    }
+
+    return min(dates);
   }
 
   protected abstract getSymbolMetrics({
@@ -1090,20 +1139,23 @@ export abstract class PortfolioCalculator {
   }
 
   @LogPerformance
-  private async initialize() {
+  private async initialize(attempt = 1) {
     const startTimeTotal = performance.now();
 
     let cachedPortfolioSnapshot: PortfolioSnapshot;
     let isCachedPortfolioSnapshotExpired = false;
-    const jobId = this.userId;
+    const portfolioSnapshotKey = this.redisCacheService.getPortfolioSnapshotKey(
+      {
+        filters: this.filters,
+        userId: this.userId
+      }
+    );
+
+    const jobId = portfolioSnapshotKey;
 
     try {
-      const cachedPortfolioSnapshotValue = await this.redisCacheService.get(
-        this.redisCacheService.getPortfolioSnapshotKey({
-          filters: this.filters,
-          userId: this.userId
-        })
-      );
+      const cachedPortfolioSnapshotValue =
+        await this.redisCacheService.get(portfolioSnapshotKey);
 
       const { expiration, portfolioSnapshot }: PortfolioSnapshotValue =
         JSON.parse(cachedPortfolioSnapshotValue);
@@ -1113,7 +1165,7 @@ export abstract class PortfolioCalculator {
         portfolioSnapshot
       );
 
-      if (isAfter(new Date(), new Date(expiration))) {
+      if (isPast(new Date(expiration))) {
         isCachedPortfolioSnapshotExpired = true;
       }
     } catch {}
@@ -1146,6 +1198,12 @@ export abstract class PortfolioCalculator {
         });
       }
     } else {
+      if (attempt > PortfolioCalculator.MAX_INITIALIZATION_ATTEMPTS) {
+        throw new PortfolioSnapshotComputationError(
+          `Portfolio snapshot of user '${this.userId}' could not be computed after ${PortfolioCalculator.MAX_INITIALIZATION_ATTEMPTS} attempts`
+        );
+      }
+
       // Wait for computation
       await this.portfolioSnapshotService.addJobToQueue({
         data: {
@@ -1168,7 +1226,7 @@ export abstract class PortfolioCalculator {
         await job.finished();
       }
 
-      await this.initialize();
+      await this.initialize(attempt + 1);
     }
   }
 }

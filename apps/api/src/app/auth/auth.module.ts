@@ -1,14 +1,17 @@
 import { AuthDeviceService } from '@ghostfolio/api/app/auth-device/auth-device.service';
 import { WebAuthService } from '@ghostfolio/api/app/auth/web-auth.service';
+import { RedisCacheModule } from '@ghostfolio/api/app/redis-cache/redis-cache.module';
 import { SubscriptionModule } from '@ghostfolio/api/app/subscription/subscription.module';
 import { UserModule } from '@ghostfolio/api/app/user/user.module';
 import { ApiKeyService } from '@ghostfolio/api/services/api-key/api-key.service';
+import { ApiModule } from '@ghostfolio/api/services/api/api.module';
 import { ConfigurationModule } from '@ghostfolio/api/services/configuration/configuration.module';
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import { FetchModule } from '@ghostfolio/api/services/fetch/fetch.module';
 import { FetchService } from '@ghostfolio/api/services/fetch/fetch.service';
 import { PrismaModule } from '@ghostfolio/api/services/prisma/prisma.module';
 import { PropertyModule } from '@ghostfolio/api/services/property/property.module';
+import { PortfolioSnapshotQueueModule } from '@ghostfolio/api/services/queues/portfolio-snapshot/portfolio-snapshot.module';
 
 import { Logger, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
@@ -24,14 +27,17 @@ import { OidcStrategy } from './oidc.strategy';
 @Module({
   controllers: [AuthController],
   imports: [
+    ApiModule,
     ConfigurationModule,
     FetchModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET_KEY,
       signOptions: { expiresIn: '180 days' }
     }),
+    PortfolioSnapshotQueueModule,
     PrismaModule,
     PropertyModule,
+    RedisCacheModule,
     SubscriptionModule,
     UserModule
   ],
@@ -63,7 +69,7 @@ import { OidcStrategy } from './oidc.strategy';
         const issuer = configurationService.get('OIDC_ISSUER');
         const scope = configurationService.get('OIDC_SCOPE');
 
-        const callbackUrl =
+        const callbackURL =
           configurationService.get('OIDC_CALLBACK_URL') ||
           `${configurationService.get('ROOT_URL')}/api/auth/oidc/callback`;
 
@@ -108,15 +114,26 @@ import { OidcStrategy } from './oidc.strategy';
           }
         }
 
+        const clientID = configurationService.get('OIDC_CLIENT_ID');
+        const clientSecret = configurationService.get('OIDC_CLIENT_SECRET');
+
+        if (!clientID || !clientSecret || !issuer) {
+          logger.error(
+            'OIDC configuration incomplete: issuer, clientID, or clientSecret missing'
+          );
+
+          throw new Error('OIDC configuration incomplete');
+        }
+
         const options: StrategyOptions = {
           authorizationURL,
+          callbackURL,
+          clientID,
+          clientSecret,
           issuer,
           scope,
           tokenURL,
-          userInfoURL,
-          callbackURL: callbackUrl,
-          clientID: configurationService.get('OIDC_CLIENT_ID'),
-          clientSecret: configurationService.get('OIDC_CLIENT_SECRET')
+          userInfoURL
         };
 
         return new OidcStrategy(authService, options);

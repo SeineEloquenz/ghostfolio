@@ -36,6 +36,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterModule } from '@angular/router';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -61,6 +62,7 @@ import { catchError, filter, of } from 'rxjs';
     MatProgressBarModule,
     MatSortModule,
     MatTableModule,
+    MatTooltipModule,
     NgxSkeletonLoaderModule,
     RouterModule
   ],
@@ -74,6 +76,7 @@ export class GfAdminSettingsComponent implements OnInit {
   public dataSource = new MatTableDataSource<DataProviderInfo>();
   public defaultDateFormat: string;
   public displayedColumns = [
+    'icon',
     'name',
     'status',
     'assetProfileCount',
@@ -81,6 +84,8 @@ export class GfAdminSettingsComponent implements OnInit {
     'actions'
   ];
   public ghostfolioApiStatus: DataProviderGhostfolioStatusResponse;
+  public readonly ghostfolioApiStatusTooltip = $localize`Additional requests are granted while you are setting up your instance`;
+  public hasGhostfolioApiKey: boolean;
   public isGhostfolioApiKeyValid: boolean;
   public isLoading = false;
   public readonly premiumDataProviderMailHref = `mailto:hi@ghostfol.io?subject=Ghostfolio Premium Data Provider&body=${[
@@ -183,6 +188,8 @@ export class GfAdminSettingsComponent implements OnInit {
         const ghostfolioApiKey = settings[
           PROPERTY_API_KEY_GHOSTFOLIO
         ] as string;
+
+        this.hasGhostfolioApiKey = !!ghostfolioApiKey;
 
         if (ghostfolioApiKey) {
           this.adminService

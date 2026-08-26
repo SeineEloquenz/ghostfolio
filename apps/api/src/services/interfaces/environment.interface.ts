@@ -23,6 +23,7 @@ export interface Environment extends CleanedEnvAccessors {
   ENABLE_FEATURE_CRON: boolean;
   ENABLE_FEATURE_FEAR_AND_GREED_INDEX: boolean;
   ENABLE_FEATURE_GATHER_NEW_EXCHANGE_RATES: boolean;
+  ENABLE_FEATURE_MCP: boolean;
   ENABLE_FEATURE_RATE_LIMITING: boolean;
   ENABLE_FEATURE_READ_ONLY_MODE: boolean;
   ENABLE_FEATURE_STATISTICS: boolean;
@@ -38,9 +39,9 @@ export interface Environment extends CleanedEnvAccessors {
   MAX_CHART_ITEMS: number;
   OIDC_AUTHORIZATION_URL: string;
   OIDC_CALLBACK_URL: string;
-  OIDC_CLIENT_ID: string;
-  OIDC_CLIENT_SECRET: string;
-  OIDC_ISSUER: string;
+  OIDC_CLIENT_ID?: string;
+  OIDC_CLIENT_SECRET?: string;
+  OIDC_ISSUER?: string;
   OIDC_SCOPE: string[];
   OIDC_TOKEN_URL: string;
   OIDC_USER_INFO_URL: string;

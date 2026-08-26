@@ -1,9 +1,22 @@
 import {
+  TAG_ID_EMERGENCY_FUND,
+  TAG_ID_EXCLUDE_FROM_ANALYSIS
+} from '@ghostfolio/common/config';
+import {
   extractNumberFromString,
+  getCountryCodeFromCurrency,
   getNumberFormatGroup,
+  getStringOrNull,
+  getStringOrUndefined,
+  isAccountExcluded,
   isCurrency,
-  isCurrencySymbol
+  isCurrencySymbol,
+  isSplitRatio,
+  isValidCustomAssetProfileSymbol,
+  isValidGranteeOfAccess,
+  resolveUserSettings
 } from '@ghostfolio/common/helper';
+import { UserSettings } from '@ghostfolio/common/interfaces';
 
 describe('Helper', () => {
   describe('Extract number from string', () => {
@@ -65,6 +78,30 @@ describe('Helper', () => {
 
     it('Not a number', () => {
       expect(extractNumberFromString({ value: 'X' })).toEqual(NaN);
+    });
+  });
+
+  describe('Get country code from currency', () => {
+    it('ISO 4217 currency code', () => {
+      expect(getCountryCodeFromCurrency('CHF')).toEqual('CH');
+      expect(getCountryCodeFromCurrency('USD')).toEqual('US');
+    });
+
+    it('Currency of the European Union', () => {
+      expect(getCountryCodeFromCurrency('EUR')).toEqual('EU');
+    });
+
+    it('Derived currency', () => {
+      expect(getCountryCodeFromCurrency('GBp')).toEqual('GB');
+    });
+
+    it('Supranational currency', () => {
+      expect(getCountryCodeFromCurrency('XAU')).toEqual('');
+      expect(getCountryCodeFromCurrency('XOF')).toEqual('');
+    });
+
+    it('Empty currency', () => {
+      expect(getCountryCodeFromCurrency('')).toEqual('');
     });
   });
 
@@ -139,6 +176,84 @@ describe('Helper', () => {
     });
   });
 
+  describe('Get string or null', () => {
+    it('String', () => {
+      expect(getStringOrNull('https://ghostfol.io')).toEqual(
+        'https://ghostfol.io'
+      );
+    });
+
+    it('String (with spaces)', () => {
+      expect(getStringOrNull(' https://ghostfol.io ')).toEqual(
+        'https://ghostfol.io'
+      );
+    });
+
+    it('Empty string', () => {
+      expect(getStringOrNull('')).toEqual(null);
+    });
+
+    it('Blank string', () => {
+      expect(getStringOrNull('   ')).toEqual(null);
+    });
+
+    it('Null', () => {
+      expect(getStringOrNull(null)).toEqual(null);
+    });
+
+    it('Undefined', () => {
+      expect(getStringOrNull(undefined)).toEqual(null);
+    });
+  });
+
+  describe('Get string or undefined', () => {
+    it('String', () => {
+      expect(getStringOrUndefined('de-DE')).toEqual('de-DE');
+    });
+
+    it('String (with spaces)', () => {
+      expect(getStringOrUndefined(' de-DE ')).toEqual('de-DE');
+    });
+
+    it('Empty string', () => {
+      expect(getStringOrUndefined('')).toEqual(undefined);
+    });
+
+    it('Blank string', () => {
+      expect(getStringOrUndefined('   ')).toEqual(undefined);
+    });
+
+    it('Null', () => {
+      expect(getStringOrUndefined(null)).toEqual(undefined);
+    });
+
+    it('Undefined', () => {
+      expect(getStringOrUndefined(undefined)).toEqual(undefined);
+    });
+  });
+
+  describe('Is account excluded', () => {
+    it('Account with Exclude from Analysis tag', () => {
+      expect(
+        isAccountExcluded({ tags: [{ id: TAG_ID_EXCLUDE_FROM_ANALYSIS }] })
+      ).toEqual(true);
+    });
+
+    it('Account with another tag', () => {
+      expect(
+        isAccountExcluded({ tags: [{ id: TAG_ID_EMERGENCY_FUND }] })
+      ).toEqual(false);
+    });
+
+    it('Account without tags', () => {
+      expect(isAccountExcluded({ tags: [] })).toEqual(false);
+    });
+
+    it('Undefined account', () => {
+      expect(isAccountExcluded(undefined)).toEqual(false);
+    });
+  });
+
   describe('Is currency', () => {
     it('ISO 4217 currency code', () => {
       expect(isCurrency('USD')).toEqual(true);
@@ -193,6 +308,247 @@ describe('Helper', () => {
 
     it('Empty symbol', () => {
       expect(isCurrencySymbol('')).toEqual(false);
+    });
+  });
+
+  describe('Is split ratio', () => {
+    it('Forward split', () => {
+      expect(isSplitRatio({ denominator: 1, numerator: 2 })).toEqual(true);
+      expect(isSplitRatio({ denominator: 1, numerator: 4 })).toEqual(true);
+      expect(isSplitRatio({ denominator: 2, numerator: 3 })).toEqual(true);
+    });
+
+    it('Reverse split', () => {
+      expect(isSplitRatio({ denominator: 10, numerator: 1 })).toEqual(true);
+      expect(isSplitRatio({ denominator: 3, numerator: 1 })).toEqual(true);
+    });
+
+    it('Ratio without effect', () => {
+      expect(isSplitRatio({ denominator: 1, numerator: 1 })).toEqual(false);
+      expect(isSplitRatio({ denominator: 3, numerator: 3 })).toEqual(false);
+    });
+
+    it('Zero or negative ratio', () => {
+      expect(isSplitRatio({ denominator: 1, numerator: 0 })).toEqual(false);
+      expect(isSplitRatio({ denominator: 0, numerator: 1 })).toEqual(false);
+      expect(isSplitRatio({ denominator: 1, numerator: -2 })).toEqual(false);
+      expect(isSplitRatio({ denominator: -2, numerator: 1 })).toEqual(false);
+    });
+
+    it('Non-integer ratio', () => {
+      expect(isSplitRatio({ denominator: 1, numerator: 1.5 })).toEqual(false);
+      expect(isSplitRatio({ denominator: 2.5, numerator: 1 })).toEqual(false);
+      expect(isSplitRatio({ denominator: 1, numerator: Number.NaN })).toEqual(
+        false
+      );
+      expect(
+        isSplitRatio({ denominator: 1, numerator: Number.POSITIVE_INFINITY })
+      ).toEqual(false);
+    });
+
+    it('Missing ratio', () => {
+      expect(
+        isSplitRatio({ denominator: undefined, numerator: undefined })
+      ).toEqual(false);
+      expect(isSplitRatio({ denominator: null, numerator: null })).toEqual(
+        false
+      );
+    });
+  });
+
+  describe('Is valid custom asset profile symbol', () => {
+    it('Empty symbol', () => {
+      expect(isValidCustomAssetProfileSymbol('')).toEqual(false);
+    });
+
+    it('Free-text symbol', () => {
+      expect(isValidCustomAssetProfileSymbol('Penthouse Apartment')).toEqual(
+        false
+      );
+    });
+
+    it('Stock symbol', () => {
+      expect(isValidCustomAssetProfileSymbol('AAPL')).toEqual(false);
+    });
+
+    it('Symbol with Ghostfolio prefix', () => {
+      expect(isValidCustomAssetProfileSymbol('GF_PENTHOUSE_APARTMENT')).toEqual(
+        true
+      );
+    });
+
+    it('UUID', () => {
+      expect(
+        isValidCustomAssetProfileSymbol('7e91b7d4-1430-4212-8380-289a06c9bbc1')
+      ).toEqual(true);
+    });
+  });
+
+  describe('Is valid grantee of access', () => {
+    const granteeUserId = 'ffb08949-2f8a-4b6e-88fd-0f1e6b6b5f5d';
+
+    it('A private access with a grantee', () => {
+      expect(
+        isValidGranteeOfAccess({ granteeUserId, type: 'PRIVATE' })
+      ).toEqual(true);
+    });
+
+    it('A private access without a grantee', () => {
+      expect(isValidGranteeOfAccess({ type: 'PRIVATE' })).toEqual(false);
+    });
+
+    it('A private access with an empty grantee', () => {
+      expect(
+        isValidGranteeOfAccess({ granteeUserId: null, type: 'PRIVATE' })
+      ).toEqual(false);
+    });
+
+    it('A public access without a grantee', () => {
+      expect(isValidGranteeOfAccess({ type: 'PUBLIC' })).toEqual(true);
+    });
+
+    it('A public access with a grantee', () => {
+      expect(isValidGranteeOfAccess({ granteeUserId, type: 'PUBLIC' })).toEqual(
+        false
+      );
+    });
+
+    it('An access of the model context protocol without a grantee', () => {
+      expect(isValidGranteeOfAccess({ type: 'MCP' })).toEqual(true);
+    });
+
+    it('An access of the model context protocol with a grantee', () => {
+      expect(isValidGranteeOfAccess({ granteeUserId, type: 'MCP' })).toEqual(
+        false
+      );
+    });
+  });
+
+  describe('Resolve user settings', () => {
+    const userSettings: UserSettings = {
+      baseCurrency: 'CHF',
+      colorScheme: 'DARK',
+      dateRange: '1y',
+      emergencyFund: 10000,
+      language: 'de',
+      locale: 'de-CH',
+      savingsRate: 500,
+      viewMode: 'DEFAULT'
+    };
+
+    const impersonationUserSettings: UserSettings = {
+      baseCurrency: 'USD',
+      colorScheme: 'LIGHT',
+      dateRange: 'ytd',
+      emergencyFund: 25000,
+      language: 'en',
+      locale: 'en-US',
+      savingsRate: 1000,
+      viewMode: 'ZEN'
+    };
+
+    it('Without impersonation', () => {
+      expect(
+        resolveUserSettings({
+          userSettings,
+          impersonationUserSettings: undefined
+        })
+      ).toEqual(userSettings);
+    });
+
+    it('Portfolio settings follow the impersonated user', () => {
+      const { baseCurrency, emergencyFund, savingsRate } = resolveUserSettings({
+        impersonationUserSettings,
+        userSettings
+      });
+
+      expect({ baseCurrency, emergencyFund, savingsRate }).toEqual({
+        baseCurrency: 'USD',
+        emergencyFund: 25000,
+        savingsRate: 1000
+      });
+    });
+
+    it('Presentation settings stay with the authenticated user', () => {
+      const { colorScheme, dateRange, language, locale, viewMode } =
+        resolveUserSettings({ impersonationUserSettings, userSettings });
+
+      expect({ colorScheme, dateRange, language, locale, viewMode }).toEqual({
+        colorScheme: 'DARK',
+        dateRange: '1y',
+        language: 'de',
+        locale: 'de-CH',
+        viewMode: 'DEFAULT'
+      });
+    });
+
+    it('Benchmark stays with the authenticated user', () => {
+      // The benchmark is a comparison of the person looking at the screen and
+      // is gated by their subscription, so it must not follow the impersonated
+      // user
+      const { benchmark } = resolveUserSettings({
+        impersonationUserSettings: {
+          benchmark: '82fd8dcc-4a0e-4dd0-b6cb-7b8a4b03e6b1'
+        },
+        userSettings: { benchmark: '1e5a0e6a-1b8b-4d0e-9f0a-4c2b3d5e6f7a' }
+      });
+
+      expect(benchmark).toEqual('1e5a0e6a-1b8b-4d0e-9f0a-4c2b3d5e6f7a');
+    });
+
+    it('Filters stay with the authenticated user', () => {
+      // The filters are always written back to the authenticated user, so
+      // reading them from the impersonated user would overwrite them
+      const { 'filters.accounts': filtersAccounts } = resolveUserSettings({
+        impersonationUserSettings: {
+          'filters.accounts': ['3b3c2b5d-5a4f-4b0a-9d4f-9b1f5e6a7c8d']
+        },
+        userSettings: {
+          'filters.accounts': ['0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d']
+        }
+      });
+
+      expect(filtersAccounts).toEqual(['0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d']);
+    });
+
+    it('Presentation settings unset for the authenticated user do not leak', () => {
+      // An unset presentation setting must not fall back to the impersonated
+      // user, otherwise their appearance and language apply to the
+      // authenticated user
+      const { colorScheme, language, locale } = resolveUserSettings({
+        impersonationUserSettings,
+        userSettings: { baseCurrency: 'CHF' }
+      });
+
+      expect(colorScheme).toBeUndefined();
+      expect(language).toBeUndefined();
+      expect(locale).toBeUndefined();
+    });
+
+    it('Unknown settings default to the impersonated user', () => {
+      // A setting which is not classified as presentation must not leak from
+      // the authenticated user into the impersonated portfolio
+      expect(
+        resolveUserSettings({
+          impersonationUserSettings: { annualInterestRate: 5 },
+          userSettings: { annualInterestRate: 3 }
+        }).annualInterestRate
+      ).toEqual(5);
+    });
+
+    it('Impersonated user without settings', () => {
+      expect(
+        resolveUserSettings({
+          userSettings,
+          impersonationUserSettings: {}
+        })
+      ).toEqual({
+        colorScheme: 'DARK',
+        dateRange: '1y',
+        language: 'de',
+        locale: 'de-CH',
+        viewMode: 'DEFAULT'
+      });
     });
   });
 });

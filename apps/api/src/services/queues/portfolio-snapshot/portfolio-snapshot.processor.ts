@@ -87,7 +87,7 @@ export class PortfolioSnapshotProcessor {
           : 0
       );
 
-      this.redisCacheService.set(
+      await this.redisCacheService.set(
         this.redisCacheService.getPortfolioSnapshotKey({
           filters: job.data.filters,
           userId: job.data.userId
@@ -101,7 +101,7 @@ export class PortfolioSnapshotProcessor {
 
       return snapshot;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message);
 
       throw new Error(error);
     }

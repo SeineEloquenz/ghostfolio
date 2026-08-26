@@ -4,6 +4,7 @@ import { CreateAccessDto } from './create-access.dto';
 import { CreateAccountBalanceDto } from './create-account-balance.dto';
 import { CreateAccountWithBalancesDto } from './create-account-with-balances.dto';
 import { CreateAccountDto } from './create-account.dto';
+import { CreateAssetProfileSplitDto } from './create-asset-profile-split.dto';
 import { CreateAssetProfileWithMarketDataDto } from './create-asset-profile-with-market-data.dto';
 import { CreateAssetProfileDto } from './create-asset-profile.dto';
 import { CreateOrderDto } from './create-order.dto';
@@ -12,6 +13,7 @@ import { CreateTagDto } from './create-tag.dto';
 import { CreateWatchlistItemDto } from './create-watchlist-item.dto';
 import { DeleteOwnUserDto } from './delete-own-user.dto';
 import { HoldingDto } from './holding.dto';
+import { MergeAssetProfileDto } from './merge-asset-profile.dto';
 import { ScraperConfigurationDto } from './scraper-configuration.dto';
 import { SectorDto } from './sector.dto';
 import { TransferBalanceDto } from './transfer-balance.dto';
@@ -36,6 +38,7 @@ export {
   CreateAccountDto,
   CreateAccountWithBalancesDto,
   CreateAssetProfileDto,
+  CreateAssetProfileSplitDto,
   CreateAssetProfileWithMarketDataDto,
   CreateOrderDto,
   CreatePlatformDto,
@@ -43,6 +46,7 @@ export {
   CreateWatchlistItemDto,
   DeleteOwnUserDto,
   HoldingDto,
+  MergeAssetProfileDto,
   ScraperConfigurationDto,
   SectorDto,
   TransferBalanceDto,

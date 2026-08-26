@@ -1,5 +1,4 @@
-import '@angular/localize/init';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { ANIMATION_MODULE_TYPE } from '@angular/core';
 import { applicationConfig, moduleMetadata } from '@storybook/angular';
 import type { Meta, StoryObj } from '@storybook/angular';
 import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
@@ -11,7 +10,12 @@ export default {
   component: GfValueComponent,
   decorators: [
     applicationConfig({
-      providers: [provideNoopAnimations()]
+      providers: [
+        {
+          provide: ANIMATION_MODULE_TYPE,
+          useValue: 'NoopAnimations'
+        }
+      ]
     }),
     moduleMetadata({
       imports: [NgxSkeletonLoaderModule]
@@ -25,6 +29,9 @@ export default {
     enableCopyToClipboardButton: {
       control: 'boolean'
     },
+    isLoading: {
+      control: 'boolean'
+    },
     size: {
       control: 'select',
       options: ['small', 'medium', 'large']
@@ -36,7 +43,7 @@ type Story = StoryObj<GfValueComponent>;
 
 export const Loading: Story = {
   args: {
-    value: undefined
+    isLoading: true
   }
 };
 

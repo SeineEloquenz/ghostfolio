@@ -10,7 +10,7 @@ import {
 } from '@ghostfolio/common/interfaces';
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
 import { internalRoutes } from '@ghostfolio/common/routes/routes';
-import { DateRange } from '@ghostfolio/common/types';
+import { hasScope, scopes } from '@ghostfolio/common/scopes';
 import { GfActivitiesTableComponent } from '@ghostfolio/ui/activities-table';
 import { GfFabComponent } from '@ghostfolio/ui/fab';
 import { DataService } from '@ghostfolio/ui/services';
@@ -54,6 +54,7 @@ export class GfActivitiesPageComponent implements OnInit {
   protected hasImpersonationId: boolean;
   protected hasPermissionToCreateActivity: boolean;
   protected hasPermissionToDeleteActivity: boolean;
+  protected hasPermissionToUpdateActivity: boolean;
   protected readonly internalRoutes = internalRoutes;
   protected pageIndex = 0;
   protected readonly pageSize = DEFAULT_PAGE_SIZE;
@@ -76,6 +77,12 @@ export class GfActivitiesPageComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly userService = inject(UserService);
 
+  protected get hasPermissionToImportActivities() {
+    // An import always writes to the own portfolio, hence it is not available
+    // while the user impersonates a different user
+    return this.hasPermissionToCreateActivity && !this.hasImpersonationId;
+  }
+
   public ngOnInit() {
     this.deviceType = this.deviceDetectorService.getDeviceInfo().deviceType;
 
@@ -92,7 +99,13 @@ export class GfActivitiesPageComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
         if (state?.user) {
+          const previousDateRange = this.getDateRange();
+
           this.updateUser(state.user);
+
+          if (previousDateRange !== this.getDateRange()) {
+            this.pageIndex = 0;
+          }
 
           this.fetchActivities();
 
@@ -120,7 +133,11 @@ export class GfActivitiesPageComponent implements OnInit {
   protected onDeleteActivities() {
     this.dataService
       .deleteActivities({
-        filters: this.userService.getFilters()
+        activityTypes: this.activityTypesFilter.length
+          ? this.activityTypesFilter
+          : undefined,
+        filters: this.userService.getFilters(),
+        range: this.getDateRange()
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
@@ -159,7 +176,8 @@ export class GfActivitiesPageComponent implements OnInit {
         activityTypes: this.activityTypesFilter.length
           ? this.activityTypesFilter
           : undefined,
-        filters: this.userService.getFilters()
+        filters: this.userService.getFilters(),
+        range: this.getDateRange()
       };
     }
 
@@ -167,10 +185,6 @@ export class GfActivitiesPageComponent implements OnInit {
       .fetchExport(fetchExportParams)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((data) => {
-        for (const activity of data.activities) {
-          delete (activity as Omit<typeof activity, 'id'> & { id?: string }).id;
-        }
-
         downloadAsFile({
           content: data,
           fileName: `ghostfolio-export-${format(
@@ -184,7 +198,7 @@ export class GfActivitiesPageComponent implements OnInit {
 
   protected onExportDrafts(activityIds?: string[]) {
     this.dataService
-      .fetchExport({ activityIds })
+      .fetchExport({ activityIds, withActivityIds: true })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((data) => {
         downloadAsFile({
@@ -277,16 +291,13 @@ export class GfActivitiesPageComponent implements OnInit {
     this.dataSource = undefined;
     this.totalItems = undefined;
 
-    const dateRange = this.user?.settings?.dateRange;
-    const range = this.isCalendarYear(dateRange) ? dateRange : undefined;
-
     this.dataService
       .fetchActivities({
-        range,
         activityTypes: this.activityTypesFilter.length
           ? this.activityTypesFilter
           : undefined,
         filters: this.userService.getFilters(),
+        range: this.getDateRange(),
         skip: this.pageIndex * this.pageSize,
         sortColumn: this.sortColumn,
         sortDirection: this.sortDirection,
@@ -298,6 +309,7 @@ export class GfActivitiesPageComponent implements OnInit {
         this.totalItems = count;
 
         if (
+          !this.hasImpersonationId &&
           this.hasPermissionToCreateActivity &&
           this.user?.activitiesCount === 0
         ) {
@@ -311,22 +323,34 @@ export class GfActivitiesPageComponent implements OnInit {
       });
   }
 
-  private isCalendarYear(dateRange?: DateRange) {
-    if (!dateRange) {
-      return false;
+  private getDateRange() {
+    const dateRange = this.user?.settings?.dateRange;
+
+    // Omit the date ranges which do not apply to activities: '1d' spans today
+    // only, while 'max' would exclude drafts dated in the future
+    if (!dateRange || ['1d', 'max'].includes(dateRange)) {
+      return undefined;
     }
 
-    return /^\d{4}$/.test(dateRange);
+    return dateRange;
   }
 
   private updateUser(aUser: User) {
     this.user = aUser;
 
     this.hasPermissionToCreateActivity =
-      !this.hasImpersonationId &&
-      hasPermission(this.user.permissions, permissions.createActivity);
+      hasPermission(this.user.permissions, permissions.createActivity) &&
+      hasScope(this.user.scopes, scopes.activityCreate) &&
+      !this.user.settings?.isRestrictedView;
+
     this.hasPermissionToDeleteActivity =
-      !this.hasImpersonationId &&
-      hasPermission(this.user.permissions, permissions.deleteActivity);
+      hasPermission(this.user.permissions, permissions.deleteActivity) &&
+      hasScope(this.user.scopes, scopes.activityDelete) &&
+      !this.user.settings?.isRestrictedView;
+
+    this.hasPermissionToUpdateActivity =
+      hasPermission(this.user.permissions, permissions.updateActivity) &&
+      hasScope(this.user.scopes, scopes.activityUpdate) &&
+      !this.user.settings?.isRestrictedView;
   }
 }

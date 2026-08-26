@@ -15,6 +15,7 @@ import {
 } from '@ghostfolio/common/interfaces';
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
 import { internalRoutes } from '@ghostfolio/common/routes/routes';
+import { hasScope, scopes } from '@ghostfolio/common/scopes';
 import { GfLineChartComponent } from '@ghostfolio/ui/line-chart';
 import { DataService } from '@ghostfolio/ui/services';
 
@@ -58,13 +59,18 @@ export class GfHomeOverviewComponent implements OnInit {
   protected readonly routerLinkPortfolio = internalRoutes.portfolio.routerLink;
   protected readonly routerLinkPortfolioActivities =
     internalRoutes.portfolio.subRoutes.activities.routerLink;
+  protected readonly routerLinkPortfolioActivitiesCreate =
+    internalRoutes.portfolio.subRoutes.activities.subRoutes.create.routerLink;
 
   protected readonly deviceType = computed(
     () => this.deviceDetectorService.deviceInfo().deviceType
   );
 
   protected readonly hasPermissionToCreateActivity = computed(() => {
-    return hasPermission(this.user()?.permissions, permissions.createActivity);
+    return (
+      hasPermission(this.user()?.permissions, permissions.createActivity) &&
+      hasScope(this.user()?.scopes, scopes.activityCreate)
+    );
   });
 
   protected readonly showDetails = computed(() => {

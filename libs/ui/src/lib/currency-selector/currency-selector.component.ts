@@ -1,3 +1,8 @@
+import {
+  getCountryCodeFromCurrency,
+  getEmojiFlag
+} from '@ghostfolio/common/helper';
+
 import { FocusMonitor } from '@angular/cdk/a11y';
 import {
   CUSTOM_ELEMENTS_SCHEMA,
@@ -24,9 +29,11 @@ import {
 import {
   MatAutocomplete,
   MatAutocompleteModule,
+  MatAutocompleteOrigin,
   MatOption
 } from '@angular/material/autocomplete';
 import {
+  MAT_FORM_FIELD,
   MatFormFieldControl,
   MatFormFieldModule
 } from '@angular/material/form-field';
@@ -39,7 +46,8 @@ import { AbstractMatFormField } from '../shared/abstract-mat-form-field';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[attr.aria-describedBy]': 'describedBy',
-    '[id]': 'id'
+    '[id]': 'id',
+    class: 'align-items-center d-flex'
   },
   imports: [
     FormsModule,
@@ -56,7 +64,6 @@ import { AbstractMatFormField } from '../shared/abstract-mat-form-field';
   ],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   selector: 'gf-currency-selector',
-  styleUrls: ['./currency-selector.component.scss'],
   templateUrl: 'currency-selector.component.html'
 })
 export class GfCurrencySelectorComponent
@@ -72,7 +79,9 @@ export class GfCurrencySelectorComponent
   public readonly formControlName = input.required<string>();
 
   private readonly destroyRef = inject(DestroyRef);
+  private readonly formField = inject(MAT_FORM_FIELD);
   private readonly input = viewChild.required(MatInput);
+  private lastSelectedCurrency: string | null = null;
 
   public constructor(
     public override readonly _elementRef: ElementRef,
@@ -86,24 +95,42 @@ export class GfCurrencySelectorComponent
     this.controlType = 'currency-selector';
   }
 
+  public get autocompleteOrigin(): MatAutocompleteOrigin {
+    return { elementRef: this.formField.getConnectedOverlayOrigin() };
+  }
+
+  public get emojiFlagOfSelectedCurrency() {
+    const selectedCurrency = this.currencies().find((currency) => {
+      return currency === this.control.value;
+    });
+
+    return this.getEmojiFlagFromCurrency(selectedCurrency);
+  }
+
   public override get empty() {
-    return this.input().empty;
+    return !this.control.value;
+  }
+
+  public override get value() {
+    return super.value;
   }
 
   public override set value(value: string | null) {
     this.control.setValue(value);
     super.value = value;
+
+    this.lastSelectedCurrency = value;
   }
 
   public focus() {
     this.input().focus();
   }
 
-  public ngOnInit() {
-    if (this.disabled) {
-      this.control.disable();
-    }
+  public getEmojiFlagFromCurrency(aCurrency = '') {
+    return getEmojiFlag(getCountryCodeFromCurrency(aCurrency));
+  }
 
+  public ngOnInit() {
     const formGroup = this.formGroupDirective.form;
 
     if (formGroup) {
@@ -146,8 +173,23 @@ export class GfCurrencySelectorComponent
     }
   }
 
+  public onPanelClosed() {
+    // Typing clears the selected currency, so restore the last selection once
+    // the panel closes without an option having been picked. An empty input is
+    // left untouched to allow clearing the currency.
+    if (super.value || !this.control.value) {
+      return;
+    }
+
+    this.value = this.lastSelectedCurrency;
+
+    this.changeDetectorRef.markForCheck();
+  }
+
   public onUpdateCurrency({ option }: { option: MatOption<string> }) {
     super.value = option.value;
+
+    this.lastSelectedCurrency = option.value;
   }
 
   private filter(value: string) {

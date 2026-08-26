@@ -3,7 +3,11 @@ import {
   TAG_ID_EXCLUDE_FROM_ANALYSIS
 } from '@ghostfolio/common/config';
 import { ConfirmationDialogType } from '@ghostfolio/common/enums';
-import { getLocale, isAccountExcluded } from '@ghostfolio/common/helper';
+import {
+  getLocale,
+  isAccountExcluded,
+  isDraftActivity
+} from '@ghostfolio/common/helper';
 import {
   Activity,
   AssetProfileIdentifier
@@ -72,7 +76,7 @@ import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 
 import { GfActivityTypeComponent } from '../activity-type/activity-type.component';
 import { GfEntityLogoComponent } from '../entity-logo/entity-logo.component';
-import { GfNoTransactionsInfoComponent } from '../no-transactions-info/no-transactions-info.component';
+import { GfNoActivitiesInfoComponent } from '../no-activities-info/no-activities-info.component';
 import { GfValueComponent } from '../value/value.component';
 
 @Component({
@@ -81,7 +85,7 @@ import { GfValueComponent } from '../value/value.component';
     CommonModule,
     GfActivityTypeComponent,
     GfEntityLogoComponent,
-    GfNoTransactionsInfoComponent,
+    GfNoActivitiesInfoComponent,
     GfValueComponent,
     IonIcon,
     MatButtonModule,
@@ -110,7 +114,9 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
   @Input() hasPermissionToDeleteActivity: boolean;
   @Input() hasPermissionToExportActivities: boolean;
   @Input() hasPermissionToFilterByType: boolean;
+  @Input() hasPermissionToImportActivities: boolean;
   @Input() hasPermissionToOpenDetails = true;
+  @Input() hasPermissionToUpdateActivity: boolean;
   @Input() locale = getLocale();
   @Input() pageIndex: number;
   @Input() pageSize = DEFAULT_PAGE_SIZE;
@@ -135,13 +141,14 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
   @ViewChild(MatPaginator) paginator: MatPaginator;
   @ViewChild(MatSort) sort: MatSort;
 
-  public activityTypesTranslationMap = new Map<ActivityType, string>();
   public hasDrafts = false;
   public hasErrors = false;
+  public isDraftActivity = isDraftActivity;
   public isUUID = isUUID;
   public selectedRows = new SelectionModel<Activity>(true, []);
   public typesFilter = new FormControl<string[]>([]);
 
+  public readonly activityTypes = input<ActivityType[]>([]);
   public readonly dataSource = input.required<
     MatTableDataSource<Activity> | undefined
   >();
@@ -166,6 +173,16 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
     }
 
     return routerLinks;
+  });
+
+  protected readonly activityTypeOptions = computed(() => {
+    return (this.activityTypes() ?? [])
+      .map((activityType) => {
+        return { key: activityType, value: translate(activityType) };
+      })
+      .sort((a, b) => {
+        return a.value.localeCompare(b.value);
+      });
   });
 
   protected readonly displayedColumns = computed(() => {
@@ -215,13 +232,6 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
   private readonly notificationService = inject(NotificationService);
 
   public constructor(private destroyRef: DestroyRef) {
-    for (const type of Object.keys(ActivityType) as ActivityType[]) {
-      this.activityTypesTranslationMap.set(
-        ActivityType[type],
-        translate(ActivityType[type])
-      );
-    }
-
     addIcons({
       alertCircleOutline,
       calendarClearOutline,
@@ -277,14 +287,28 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
     return (
       this.hasPermissionToOpenDetails &&
       this.isExcludedFromAnalysis(activity) === false &&
-      activity.isDraft === false &&
+      isDraftActivity(activity) === false &&
       ['BUY', 'DIVIDEND', 'SELL'].includes(activity.type)
+    );
+  }
+
+  public canDeleteActivities() {
+    return (
+      (this.dataSource()?.data.length ?? 0) > 0 &&
+      this.hasPermissionToDeleteActivity
+    );
+  }
+
+  public canExportActivities() {
+    return (
+      (this.dataSource()?.data.length ?? 0) > 0 &&
+      this.hasPermissionToExportActivities
     );
   }
 
   public isExcludedFromAnalysis(activity: Activity) {
     return (
-      (activity.account && isAccountExcluded(activity.account)) ??
+      isAccountExcluded(activity.account) ||
       activity.tags?.some(({ id }) => {
         return id === TAG_ID_EXCLUDE_FROM_ANALYSIS;
       }) === true
@@ -314,7 +338,10 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
         this.activitiesDeleted.emit();
       },
       confirmType: ConfirmationDialogType.Warn,
-      title: $localize`Do you really want to delete these activities?`
+      title:
+        this.totalItems === 1
+          ? $localize`Do you really want to delete this activity?`
+          : $localize`Do you really want to delete these ${this.totalItems}:count: activities?`
     });
   }
 
@@ -340,7 +367,7 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
     this.exportDrafts.emit(
       this.dataSource()
         ?.filteredData.filter((activity) => {
-          return activity.isDraft;
+          return isDraftActivity(activity);
         })
         .map((activity) => {
           return activity.id;
@@ -360,13 +387,6 @@ export class GfActivitiesTableComponent implements AfterViewInit, OnInit {
     this.notificationService.alert({
       title: aComment
     });
-  }
-
-  public sortByValue(
-    a: { key: ActivityType; value: string },
-    b: { key: ActivityType; value: string }
-  ) {
-    return a.value.localeCompare(b.value);
   }
 
   public toggleAllRows() {

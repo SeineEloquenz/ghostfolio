@@ -1,7 +1,12 @@
+import { MCP_ENDPOINT } from '@ghostfolio/common/config';
 import { ConfirmationDialogType } from '@ghostfolio/common/enums';
 import { Access, User } from '@ghostfolio/common/interfaces';
-import { publicRoutes } from '@ghostfolio/common/routes/routes';
+import { hasPermission, permissions } from '@ghostfolio/common/permissions';
+import { internalRoutes, publicRoutes } from '@ghostfolio/common/routes/routes';
+import { getAccessLevel } from '@ghostfolio/common/scopes';
+import { GfAccessLevelIconComponent } from '@ghostfolio/ui/access-level-icon';
 import { NotificationService } from '@ghostfolio/ui/notifications';
+import { DataService } from '@ghostfolio/ui/services';
 
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import {
@@ -26,20 +31,22 @@ import {
   createOutline,
   ellipsisHorizontal,
   linkOutline,
-  lockClosedOutline,
-  lockOpenOutline,
-  removeCircleOutline
+  removeCircleOutline,
+  trashOutline
 } from 'ionicons/icons';
 import ms from 'ms';
+import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ClipboardModule,
+    GfAccessLevelIconComponent,
     IonIcon,
     MatButtonModule,
     MatMenuModule,
     MatTableModule,
+    NgxSkeletonLoaderModule,
     RouterModule
   ],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -49,11 +56,23 @@ import ms from 'ms';
 })
 export class GfAccessTableComponent {
   public readonly accesses = input.required<Access[]>();
+  public readonly isReceivedAccess = input<boolean>(false);
   public readonly showActions = input<boolean>(false);
   public readonly user = input.required<User>();
 
   public readonly accessDeleted = output<string>();
-  public readonly accessToUpdate = output<string>();
+
+  protected readonly accessDialogRouterLinks = computed(() => {
+    const { update } = internalRoutes.account.subRoutes.access.subRoutes;
+
+    const routerLinks = new Map<string, string[]>();
+
+    for (const { id } of this.accesses() ?? []) {
+      routerLinks.set(id, update.routerLink(id));
+    }
+
+    return routerLinks;
+  });
 
   protected readonly baseUrl = window.location.origin;
   protected readonly dataSource = new MatTableDataSource<Access>();
@@ -68,7 +87,18 @@ export class GfAccessTableComponent {
     return columns;
   });
 
+  protected readonly getAccessLevel = getAccessLevel;
+
+  protected hasPermissionToEnableMcp = false;
+
+  protected readonly isLoading = computed(() => {
+    return !this.accesses();
+  });
+
+  protected readonly mcpEndpoint = MCP_ENDPOINT;
+
   private readonly clipboard = inject(Clipboard);
+  private readonly dataService = inject(DataService);
   private readonly notificationService = inject(NotificationService);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -78,10 +108,14 @@ export class GfAccessTableComponent {
       createOutline,
       ellipsisHorizontal,
       linkOutline,
-      lockClosedOutline,
-      lockOpenOutline,
-      removeCircleOutline
+      removeCircleOutline,
+      trashOutline
     });
+
+    this.hasPermissionToEnableMcp = hasPermission(
+      this.dataService.fetchInfo().globalPermissions,
+      permissions.enableMcp
+    );
 
     effect(() => {
       this.dataSource.data = this.accesses() ?? [];
@@ -92,6 +126,18 @@ export class GfAccessTableComponent {
     const languageCode = this.user().settings.language;
 
     return `${this.baseUrl}/${languageCode}/${publicRoutes.public.path}/${aId}`;
+  }
+
+  protected onCopyIdToClipboard(aId: string) {
+    this.clipboard.copy(aId);
+
+    this.snackBar.open(
+      '✅ ' + $localize`Identifier has been copied to the clipboard`,
+      undefined,
+      {
+        duration: ms('3 seconds')
+      }
+    );
   }
 
   protected onCopyUrlToClipboard(aId: string) {
@@ -112,11 +158,9 @@ export class GfAccessTableComponent {
         this.accessDeleted.emit(aId);
       },
       confirmType: ConfirmationDialogType.Warn,
-      title: $localize`Do you really want to revoke this granted access?`
+      title: this.isReceivedAccess()
+        ? $localize`Do you really want to remove this received access?`
+        : $localize`Do you really want to revoke this granted access?`
     });
-  }
-
-  protected onUpdateAccess(aId: string) {
-    this.accessToUpdate.emit(aId);
   }
 }

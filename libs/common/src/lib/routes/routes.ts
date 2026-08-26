@@ -23,6 +23,20 @@ export const internalRoutes = {
       access: {
         path: 'access',
         routerLink: ['/account', 'access'],
+        subRoutes: {
+          create: {
+            path: 'create',
+            routerLink: ['/account', 'access', 'create'],
+            title: $localize`Grant access`
+          },
+          update: {
+            path: 'update',
+            routerLink: (aAccessId: string) => {
+              return ['/account', 'access', aAccessId, 'update'];
+            },
+            title: $localize`Edit access`
+          }
+        },
         title: $localize`Access`
       },
       membership: {
@@ -66,6 +80,27 @@ export const internalRoutes = {
   accounts: {
     path: 'accounts',
     routerLink: ['/accounts'],
+    subRoutes: {
+      create: {
+        path: 'create',
+        routerLink: ['/accounts', 'create'],
+        title: $localize`Add Account`
+      },
+      detail: {
+        path: undefined, // Default sub route
+        routerLink: (aAccountId: string) => {
+          return ['/accounts', aAccountId];
+        },
+        title: $localize`Account`
+      },
+      update: {
+        path: 'update',
+        routerLink: (aAccountId: string) => {
+          return ['/accounts', aAccountId, 'update'];
+        },
+        title: $localize`Update Account`
+      }
+    },
     title: $localize`Accounts`
   },
   api: {
@@ -92,11 +127,6 @@ export const internalRoutes = {
       markets: {
         path: 'markets',
         routerLink: ['/home', 'markets'],
-        title: $localize`Markets`
-      },
-      marketsPremium: {
-        path: 'markets-premium',
-        routerLink: ['/home', 'markets-premium'],
         title: $localize`Markets`
       },
       summary: {

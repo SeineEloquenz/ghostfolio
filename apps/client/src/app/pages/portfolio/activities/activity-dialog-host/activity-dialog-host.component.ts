@@ -1,7 +1,9 @@
 import { UserService } from '@ghostfolio/client/services/user/user.service';
 import { CreateOrderDto, UpdateOrderDto } from '@ghostfolio/common/dtos';
 import { Activity, User } from '@ghostfolio/common/interfaces';
+import { hasPermission, permissions } from '@ghostfolio/common/permissions';
 import { internalRoutes } from '@ghostfolio/common/routes/routes';
+import { Scope, hasScope, scopes } from '@ghostfolio/common/scopes';
 import { DataService } from '@ghostfolio/ui/services';
 
 import {
@@ -16,8 +18,15 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DeviceDetectorService } from 'ngx-device-detector';
-import { Observable, of } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { EMPTY, Observable, of, Subject } from 'rxjs';
+import {
+  catchError,
+  distinctUntilChanged,
+  map,
+  switchMap,
+  takeUntil,
+  tap
+} from 'rxjs/operators';
 
 import { GfCreateOrUpdateActivityDialogComponent } from '../create-or-update-activity-dialog/create-or-update-activity-dialog.component';
 import { CreateOrUpdateActivityDialogParams } from '../create-or-update-activity-dialog/interfaces/interfaces';
@@ -31,6 +40,8 @@ import { ActivityDialogMode } from './types/activity-dialog-mode.type';
 export class GfActivityDialogHostComponent implements OnDestroy, OnInit {
   private dialogRef: MatDialogRef<GfCreateOrUpdateActivityDialogComponent>;
 
+  private readonly dialogClosed = new Subject<void>();
+
   private readonly dataService = inject(DataService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly deviceDetectorService = inject(DeviceDetectorService);
@@ -41,62 +52,87 @@ export class GfActivityDialogHostComponent implements OnDestroy, OnInit {
 
   public ngOnInit() {
     const mode = this.route.snapshot.data.mode as ActivityDialogMode;
-    const activityId = this.route.snapshot.paramMap.get('activityId');
 
-    const activity$: Observable<Activity | undefined> = activityId
-      ? this.dataService.fetchActivity(activityId)
-      : of(undefined);
-
-    this.userService
-      .get()
+    // The router reuses this component when only the activity id changes, so
+    // the parameters are observed instead of read from the snapshot once
+    this.route.paramMap
       .pipe(
-        switchMap((user) => {
-          return activity$.pipe(
-            map((activity) => {
-              return { activity, user };
+        map((paramMap) => {
+          return paramMap.get('activityId');
+        }),
+        distinctUntilChanged(),
+        tap(() => {
+          this.closeDialog();
+        }),
+        switchMap((activityId) => {
+          const activity$: Observable<Activity | undefined> = activityId
+            ? this.dataService.fetchActivity(activityId)
+            : of(undefined);
+
+          return this.userService.get().pipe(
+            switchMap((user) => {
+              return activity$.pipe(
+                map((activity) => {
+                  return { activity, user };
+                })
+              );
+            }),
+            catchError(() => {
+              this.navigateBack();
+
+              return EMPTY;
             })
           );
         }),
         takeUntilDestroyed(this.destroyRef)
       )
-      .subscribe({
-        error: () => {
-          this.navigateBack();
-        },
-        next: ({ activity, user }) => {
-          if (mode === 'update') {
-            if (!activity) {
-              this.navigateBack();
-
-              return;
-            }
-
-            this.openDialog({ activity, user, isUpdate: true });
-
-            return;
-          }
-
-          if (mode === 'clone' && !activity) {
+      .subscribe(({ activity, user }) => {
+        if (mode === 'update') {
+          if (
+            !activity ||
+            !hasPermission(user?.permissions, permissions.updateActivity) ||
+            this.isWriteRestricted(user, scopes.activityUpdate)
+          ) {
             this.navigateBack();
 
             return;
           }
 
-          this.openDialog({
-            user,
-            activity: {
-              ...activity,
-              accountId: activity?.accountId,
-              assetProfile: activity?.assetProfile ?? null,
-              date: new Date(),
-              fee: 0,
-              id: null,
-              type: activity?.type ?? 'BUY',
-              unitPrice: null
-            },
-            isUpdate: false
-          });
+          this.openDialog({ activity, user, isUpdate: true });
+
+          return;
         }
+
+        if (mode === 'clone' && !activity) {
+          this.navigateBack();
+
+          return;
+        }
+
+        // Cloning creates a new activity as well
+        if (
+          !hasPermission(user?.permissions, permissions.createActivity) ||
+          this.isWriteRestricted(user, scopes.activityCreate)
+        ) {
+          this.navigateBack();
+
+          return;
+        }
+
+        this.openDialog({
+          user,
+          activity: {
+            ...activity,
+            accountId: activity?.accountId,
+            assetProfile: activity?.assetProfile ?? null,
+            date: new Date(),
+            fee: 0,
+            id: null,
+            type: activity?.type ?? 'BUY',
+            unitPrice: null
+          },
+          isUpdate: false
+        });
       });
   }
 
@@ -105,6 +141,23 @@ export class GfActivityDialogHostComponent implements OnDestroy, OnInit {
     // be closed explicitly when leaving the route (for example via the browser
     // navigation)
     this.dialogRef?.close();
+
+    this.dialogClosed.complete();
+  }
+
+  private closeDialog() {
+    // Tear down the subscription of the dialog which is about to be replaced,
+    // so that its result is not mistaken for the user closing it
+    this.dialogClosed.next();
+
+    this.dialogRef?.close();
+  }
+
+  private isWriteRestricted(user: User, requiredScope: Scope) {
+    return (
+      !hasScope(user?.scopes, requiredScope) ||
+      !!user?.settings?.isRestrictedView
+    );
   }
 
   private navigateBack() {
@@ -124,7 +177,7 @@ export class GfActivityDialogHostComponent implements OnDestroy, OnInit {
   }) {
     const deviceType = this.deviceDetectorService.getDeviceInfo().deviceType;
 
-    this.dialogRef = this.dialog.open<
+    const dialogRef = this.dialog.open<
       GfCreateOrUpdateActivityDialogComponent,
       CreateOrUpdateActivityDialogParams
     >(GfCreateOrUpdateActivityDialogComponent, {
@@ -137,9 +190,11 @@ export class GfActivityDialogHostComponent implements OnDestroy, OnInit {
       width: deviceType === 'mobile' ? '100vw' : '50rem'
     });
 
-    this.dialogRef
+    this.dialogRef = dialogRef;
+
+    dialogRef
       .afterClosed()
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(takeUntil(this.dialogClosed), takeUntilDestroyed(this.destroyRef))
       .subscribe((result: CreateOrderDto | UpdateOrderDto | null) => {
         if (!result) {
           this.navigateBack();

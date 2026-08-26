@@ -13,7 +13,7 @@ import type { BenchmarkProperty } from './benchmark-property.interface';
 import type { Benchmark } from './benchmark.interface';
 import type { Coupon } from './coupon.interface';
 import type { DataProviderInfo } from './data-provider-info.interface';
-import type { EnhancedSymbolProfile } from './enhanced-symbol-profile.interface';
+import type { EnhancedAssetProfile } from './enhanced-asset-profile.interface';
 import type { FilterGroup } from './filter-group.interface';
 import type { Filter } from './filter.interface';
 import type { FireCalculationCompleteEvent } from './fire-calculation-complete-event.interface';
@@ -94,7 +94,6 @@ import type { SubscriptionOffer } from './subscription-offer.interface';
 import type { SymbolItem } from './symbol-item.interface';
 import type { SymbolMetrics } from './symbol-metrics.interface';
 import type { SystemMessage } from './system-message.interface';
-import type { ToggleOption } from './toggle-option.interface';
 import type { UserItem } from './user-item.interface';
 import type { UserSettings } from './user-settings.interface';
 import type { User } from './user.interface';
@@ -143,7 +142,7 @@ export {
   DataProviderInfo,
   DataProviderResponse,
   DividendsResponse,
-  EnhancedSymbolProfile,
+  EnhancedAssetProfile,
   ExportResponse,
   Filter,
   FilterGroup,
@@ -191,7 +190,6 @@ export {
   SymbolItem,
   SymbolMetrics,
   SystemMessage,
-  ToggleOption,
   User,
   UserItem,
   UserSettings,
