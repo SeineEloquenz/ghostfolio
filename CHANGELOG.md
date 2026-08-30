@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 3.64.0 - 2026-08-30
+
+### Added
+
+- Added the support for the filters of the assistant to the accounts page
+- Added a tool to get the accounts of the portfolio to the server of the Model Context Protocol (MCP) (experimental)
+- Extended the `GET api/v1/account` endpoint by the filters `accounts`, `assetClasses` and `tags`
+
+### Changed
+
+- Restricted the support for filtering to the public access to share the portfolio (experimental)
+- Improved the language localization for German (`de`)
+- Upgraded `twitter-api-v2` from version `1.29.0` to `1.29.1`
+- Upgraded `zone.js` from version `0.16.1` to `0.16.2`
+
+### Fixed
+
+- Fixed the redaction of `fee`, `quantity`, `value` and `valueInBaseCurrency` in the latest activities of the public page (experimental)
+
 ## 3.63.0 - 2026-08-28
 
 ### Added
