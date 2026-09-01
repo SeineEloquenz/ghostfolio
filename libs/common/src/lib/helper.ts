@@ -15,7 +15,9 @@ import {
   getDate,
   getMonth,
   getYear,
+  isAfter,
   isMatch,
+  isValid,
   parse,
   parseISO,
   subDays
@@ -230,6 +232,22 @@ export function canOpenHoldingDetail({
 
 export function capitalize(aString: string) {
   return aString.charAt(0).toUpperCase() + aString.slice(1).toLowerCase();
+}
+
+export function convertValuesToPercentagesOfTotal({
+  total,
+  values
+}: {
+  total: number;
+  values: { [key: string]: { value: number } };
+}) {
+  if (!total) {
+    return;
+  }
+
+  for (const item of Object.values(values)) {
+    item.value = item.value / total;
+  }
 }
 
 export function downloadAsFile({
@@ -553,6 +571,14 @@ export function isAccountExcluded(account?: { tags?: { id: string }[] }) {
   );
 }
 
+export function isCashPosition({
+  assetSubClass
+}: {
+  assetSubClass?: AssetSubClass;
+} = {}) {
+  return assetSubClass === AssetSubClass.CASH;
+}
+
 export function isCurrency(aCurrency: string) {
   if (!aCurrency) {
     return false;
@@ -644,8 +670,25 @@ export function isUserSettingOfAuthenticatedUser(aKey: string) {
   );
 }
 
+export function isValidCurrencyCode(aCurrency: string) {
+  if (!aCurrency) {
+    return false;
+  }
+
+  return (
+    isDerivedCurrency(aCurrency) ||
+    (aCurrency === aCurrency.toUpperCase() && isISO4217CurrencyCode(aCurrency))
+  );
+}
+
 export function isValidCustomAssetProfileSymbol(aSymbol: string) {
   return hasGhostfolioPrefix(aSymbol) || isUUID(aSymbol);
+}
+
+export function isValidDateAfter1970(aDate: Date | string) {
+  const date = isString(aDate) ? parseISO(aDate, { in: utc }) : aDate;
+
+  return isValid(date) && isAfter(date, new Date(0));
 }
 
 /**
