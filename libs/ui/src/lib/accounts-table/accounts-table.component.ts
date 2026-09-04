@@ -56,7 +56,7 @@ import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
   templateUrl: './accounts-table.component.html'
 })
 export class GfAccountsTableComponent {
-  public readonly accounts = input.required<AccountWithValue[]>();
+  public readonly accounts = input.required<AccountWithValue[] | undefined>();
   public readonly activitiesCount = input<number>();
   public readonly baseCurrency = input<string>();
   public readonly hasPermissionToDeleteAccount = input<boolean>();
@@ -75,7 +75,6 @@ export class GfAccountsTableComponent {
   public readonly totalValueInBaseCurrency = input<number>();
 
   public readonly accountDeleted = output<string>();
-  public readonly transferBalance = output<void>();
 
   public readonly sort = viewChild.required(MatSort);
 
@@ -141,6 +140,9 @@ export class GfAccountsTableComponent {
 
   protected readonly isLoading = computed(() => !this.accounts());
 
+  protected readonly transferCashBalanceRouterLink =
+    internalRoutes.accounts.subRoutes.transferCashBalance.routerLink;
+
   private readonly notificationService = inject(NotificationService);
   private readonly router = inject(Router);
 
@@ -159,7 +161,7 @@ export class GfAccountsTableComponent {
 
     // Reactive data update
     effect(() => {
-      this.dataSource.data = this.accounts();
+      this.dataSource.data = this.accounts() ?? [];
     });
 
     // Reactive view connection
@@ -196,9 +198,5 @@ export class GfAccountsTableComponent {
     this.notificationService.alert({
       title: aComment
     });
-  }
-
-  protected onTransferBalance() {
-    this.transferBalance.emit();
   }
 }
