@@ -66,7 +66,7 @@ import {
   PortfolioSummary,
   UserSettings
 } from '@ghostfolio/common/interfaces';
-import { TimelinePosition } from '@ghostfolio/common/models';
+import { PortfolioSnapshotHolding } from '@ghostfolio/common/models';
 import {
   AccountWithBalance,
   AccountWithValue,
@@ -689,7 +689,7 @@ export class PortfolioService {
     }
 
     const portfolioItemsNow: {
-      [assetProfileIdentifier: string]: TimelinePosition;
+      [assetProfileIdentifier: string]: PortfolioSnapshotHolding;
     } = {};
 
     for (const position of positions) {
@@ -970,7 +970,8 @@ export class PortfolioService {
       subscriptionType: user.subscription?.type
     });
 
-    const transactionPoints = portfolioCalculator.getTransactionPoints();
+    const holdingBalancesByDate =
+      portfolioCalculator.getHoldingBalancesByDate();
 
     const { positions } = await portfolioCalculator.getSnapshot();
 
@@ -984,10 +985,15 @@ export class PortfolioService {
 
     const {
       activitiesCount,
+      averageInvestment,
+      averageInvestmentWithCurrencyEffect,
       averagePrice,
       currency,
       dateOfFirstActivity,
       dividendInBaseCurrency,
+      dividendYieldPercent: dividendYieldPercentOfSnapshot,
+      dividendYieldPercentWithCurrencyEffect:
+        dividendYieldPercentWithCurrencyEffectOfSnapshot,
       feeInBaseCurrency,
       grossPerformance,
       grossPerformancePercentage,
@@ -1000,10 +1006,36 @@ export class PortfolioService {
       netPerformancePercentageWithCurrencyEffectMap,
       netPerformanceWithCurrencyEffectMap,
       quantity,
-      tags,
-      timeWeightedInvestment,
-      timeWeightedInvestmentWithCurrencyEffect
+      tags
     } = holding;
+
+    // TODO: Remove the block below with the next release, when each cached
+    // portfolio snapshot contains the dividend yield. Then take
+    // dividendYieldPercent and dividendYieldPercentWithCurrencyEffect
+    // directly from the holding and remove averageInvestment and
+    // averageInvestmentWithCurrencyEffect from the properties above
+    const daysInMarket = differenceInDays(
+      new Date(),
+      parseDate(dateOfFirstActivity)
+    );
+
+    const dividendYieldPercent =
+      dividendYieldPercentOfSnapshot ??
+      getAnnualizedPerformancePercent({
+        daysInMarket,
+        netPerformancePercentage: averageInvestment.eq(0)
+          ? new Big(0)
+          : dividendInBaseCurrency.div(averageInvestment)
+      });
+
+    const dividendYieldPercentWithCurrencyEffect =
+      dividendYieldPercentWithCurrencyEffectOfSnapshot ??
+      getAnnualizedPerformancePercent({
+        daysInMarket,
+        netPerformancePercentage: averageInvestmentWithCurrencyEffect.eq(0)
+          ? new Big(0)
+          : dividendInBaseCurrency.div(averageInvestmentWithCurrencyEffect)
+      });
 
     const activitiesOfHolding = activities.filter((activity) => {
       return (
@@ -1011,27 +1043,6 @@ export class PortfolioService {
         activity.assetProfile.symbol === symbol
       );
     });
-
-    const dividendYieldPercent = getAnnualizedPerformancePercent({
-      daysInMarket: differenceInDays(
-        new Date(),
-        parseDate(dateOfFirstActivity)
-      ),
-      netPerformancePercentage: timeWeightedInvestment.eq(0)
-        ? new Big(0)
-        : dividendInBaseCurrency.div(timeWeightedInvestment)
-    });
-
-    const dividendYieldPercentWithCurrencyEffect =
-      getAnnualizedPerformancePercent({
-        daysInMarket: differenceInDays(
-          new Date(),
-          parseDate(dateOfFirstActivity)
-        ),
-        netPerformancePercentage: timeWeightedInvestmentWithCurrencyEffect.eq(0)
-          ? new Big(0)
-          : dividendInBaseCurrency.div(timeWeightedInvestmentWithCurrencyEffect)
-      });
 
     const historicalData = await this.dataProviderService.getHistorical(
       [{ dataSource, symbol }],
@@ -1061,8 +1072,11 @@ export class PortfolioService {
         historicalDataItems
       )) {
         while (
-          j + 1 < transactionPoints.length &&
-          !isAfter(parseDate(transactionPoints[j + 1].date), parseDate(date))
+          j + 1 < holdingBalancesByDate.length &&
+          !isAfter(
+            parseDate(holdingBalancesByDate[j + 1].date),
+            parseDate(date)
+          )
         ) {
           j++;
         }
@@ -1070,15 +1084,15 @@ export class PortfolioService {
         let currentAveragePrice = 0;
         let currentQuantity = 0;
 
-        const currentSymbol = transactionPoints[j]?.items.find(
-          (transactionPointSymbol) => {
-            return transactionPointSymbol.symbol === symbol;
+        const holdingBalance = holdingBalancesByDate[j]?.holdings.find(
+          ({ symbol: holdingBalanceSymbol }) => {
+            return holdingBalanceSymbol === symbol;
           }
         );
 
-        if (currentSymbol) {
-          currentAveragePrice = currentSymbol.averagePrice.toNumber();
-          currentQuantity = currentSymbol.quantity.toNumber();
+        if (holdingBalance) {
+          currentAveragePrice = holdingBalance.averagePrice.toNumber();
+          currentQuantity = holdingBalance.quantity.toNumber();
         }
 
         historicalDataArray.push({
@@ -2097,6 +2111,8 @@ export class PortfolioService {
     }
 
     const {
+      dividendYieldPercent,
+      dividendYieldPercentWithCurrencyEffect,
       totalCashInBaseCurrency,
       totalInvestment,
       totalInvestmentWithCurrencyEffect,
@@ -2219,6 +2235,11 @@ export class PortfolioService {
         return ['BUY', 'SELL'].includes(type);
       }).length,
       dividendInBaseCurrency: dividendInBaseCurrency.toNumber(),
+      // TODO: Remove the fallback to 0 with the next release, when each
+      // cached portfolio snapshot contains the dividend yield
+      dividendYieldPercent: dividendYieldPercent?.toNumber() ?? 0,
+      dividendYieldPercentWithCurrencyEffect:
+        dividendYieldPercentWithCurrencyEffect?.toNumber() ?? 0,
       emergencyFund: {
         assets: emergencyFundHoldingsValueInBaseCurrency,
         cash: totalEmergencyFund
@@ -2316,7 +2337,7 @@ export class PortfolioService {
   }: {
     activities: Activity[];
     filters?: Filter[];
-    portfolioItemsNow: Record<string, TimelinePosition>;
+    portfolioItemsNow: Record<string, PortfolioSnapshotHolding>;
     userCurrency: string;
     userId: string;
     withExcludedAccounts?: boolean;

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 3.72.0 - 2026-09-20
+
+### Added
+
+- Added a tool to get the watchlist to the server of the Model Context Protocol (MCP) (experimental)
+
+### Changed
+
+- Extended the cache key of the portfolio snapshot by the performance calculation type
+- Hardened the validation of the device id in the biometric authentication
+- Upgraded `stripe` from version `22.5.0` to `22.6.2`
+
+### Fixed
+
+- Fixed the net performance percentage of date ranges in the portfolio performance calculation by including the gross performance at the start date
+
 ## 3.71.0 - 2026-09-19
 
 ### Added
