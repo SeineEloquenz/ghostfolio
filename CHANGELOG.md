@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 3.74.0 - 2026-09-27
+
+### Added
+
+- Added the dividend performance to the analysis page (experimental)
+
+### Changed
+
+- Simplified the portfolio summary by hiding the currency on mobile
+- Improved the performance of the logo endpoints by enabling the browser cache
+- Improved the language localization for Catalan (`ca`)
+- Improved the language localization for German (`de`)
+
+### Fixed
+
+- Fixed the wrapping of the name column in the accounts table component on mobile
+- Fixed the sorting of the watchlist for asset profiles without a name
+
 ## 3.73.0 - 2026-09-26
 
 ### Changed
