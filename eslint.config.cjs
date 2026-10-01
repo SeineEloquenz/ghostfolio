@@ -83,6 +83,18 @@ module.exports = [
         }
       ],
       '@typescript-eslint/no-non-null-assertion': 'warn',
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              message:
+                'Import the types from @ghostfolio/prisma/browser and the enums from @ghostfolio/prisma/enums instead.',
+              name: '@prisma/client'
+            }
+          ]
+        }
+      ],
       '@typescript-eslint/no-shadow': [
         'warn',
         {
@@ -104,7 +116,24 @@ module.exports = [
       'no-eval': 'error',
       'no-fallthrough': 'error',
       'no-new-wrappers': 'error',
-      'no-restricted-imports': ['error', 'rxjs/Rx'],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            'rxjs/Rx',
+            {
+              message: 'Import from lodash-es instead.',
+              name: 'lodash'
+            }
+          ],
+          patterns: [
+            {
+              group: ['lodash/*'],
+              message: 'Import from lodash-es instead.'
+            }
+          ]
+        }
+      ],
       'no-undef-init': 'error',
       'no-underscore-dangle': 'off',
       'no-var': 'error',

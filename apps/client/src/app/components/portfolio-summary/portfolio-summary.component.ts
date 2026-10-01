@@ -23,7 +23,7 @@ import {
   ellipsisHorizontalCircleOutline,
   informationCircleOutline
 } from 'ionicons/icons';
-import { isNumber } from 'lodash';
+import { isNumber } from 'lodash-es';
 import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 
 @Component({
@@ -201,7 +201,8 @@ export class GfPortfolioSummaryComponent implements OnChanges {
       },
       confirmLabel: $localize`Save`,
       defaultValue: this.summary.emergencyFund?.total?.toString() ?? '0',
-      title: $localize`Please set the amount of your emergency fund.`
+      title: $localize`Please set the amount of your emergency fund.`,
+      valueSuffix: this.baseCurrency
     });
   }
 
