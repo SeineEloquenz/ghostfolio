@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 3.77.0 - 2026-10-02
+
+### Added
+
+- Added a tool to get the performance to the server of the Model Context Protocol (MCP) (experimental)
+
+### Changed
+
+- Upgraded `prettier` from version `3.9.6` to `3.9.9`
+- Upgraded `undici` from version `8.10.0` to `8.11.2`
+
+### Fixed
+
+- Fixed the filtering by holding in the server of the Model Context Protocol (MCP) (experimental)
+
 ## 3.76.0 - 2026-09-30
 
 ### Added
