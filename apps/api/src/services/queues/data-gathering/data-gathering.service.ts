@@ -363,7 +363,7 @@ export class DataGatheringService {
           },
           update: { marketPrice, isCarriedForward: false },
           where: {
-            dataSource_date_symbol: {
+            dataSource_symbol_date: {
               dataSource,
               symbol,
               date: startOfUtcDate
