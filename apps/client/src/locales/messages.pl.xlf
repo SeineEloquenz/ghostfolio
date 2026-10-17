@@ -1939,7 +1939,7 @@
         <target state="translated">Całkowita Kwota</target>
         <context-group purpose="location">
           <context context-type="sourcefile">libs/ui/src/lib/investment-chart/investment-chart.component.ts</context>
-          <context context-type="linenumber">166</context>
+          <context context-type="linenumber">182</context>
         </context-group>
       </trans-unit>
       <trans-unit id="8186013988289067040" datatype="html">
@@ -1955,7 +1955,7 @@
         <target state="translated">Stopa Oszczędności</target>
         <context-group purpose="location">
           <context context-type="sourcefile">libs/ui/src/lib/investment-chart/investment-chart.component.ts</context>
-          <context context-type="linenumber">215</context>
+          <context context-type="linenumber">231</context>
         </context-group>
       </trans-unit>
       <trans-unit id="2232148295564585586" datatype="html">
@@ -4887,7 +4887,7 @@
         <target state="translated">Rozwój portfela</target>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/client/src/app/pages/portfolio/analysis/analysis-page.html</context>
-          <context context-type="linenumber">468</context>
+          <context context-type="linenumber">469</context>
         </context-group>
       </trans-unit>
       <trans-unit id="6766448922039123937" datatype="html">
@@ -4895,7 +4895,7 @@
         <target state="translated">Oś czasu inwestycji</target>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/client/src/app/pages/portfolio/analysis/analysis-page.html</context>
-          <context context-type="linenumber">496</context>
+          <context context-type="linenumber">497</context>
         </context-group>
       </trans-unit>
       <trans-unit id="1440519383036502539" datatype="html">
@@ -4903,7 +4903,7 @@
         <target state="translated">Obecna passa</target>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/client/src/app/pages/portfolio/analysis/analysis-page.html</context>
-          <context context-type="linenumber">517</context>
+          <context context-type="linenumber">518</context>
         </context-group>
       </trans-unit>
       <trans-unit id="457461496511383061" datatype="html">
@@ -4911,7 +4911,7 @@
         <target state="translated">Najdłuższa passa</target>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/client/src/app/pages/portfolio/analysis/analysis-page.html</context>
-          <context context-type="linenumber">526</context>
+          <context context-type="linenumber">527</context>
         </context-group>
       </trans-unit>
       <trans-unit id="6854252543786630145" datatype="html">
@@ -4919,7 +4919,7 @@
         <target state="translated">Oś czasu dywidend</target>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/client/src/app/pages/portfolio/analysis/analysis-page.html</context>
-          <context context-type="linenumber">554</context>
+          <context context-type="linenumber">555</context>
         </context-group>
       </trans-unit>
       <trans-unit id="5857197365507636437" datatype="html">
