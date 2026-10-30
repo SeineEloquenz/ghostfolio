@@ -149,4 +149,40 @@ describe('TradeRepublic', () => {
       })
     ).toHaveLength(3);
   });
+
+  it('converts bonds to units of 100 and coupons to interest', () => {
+    const header = CSV.split('\n')[0];
+
+    const { activities, assetProfiles } = convertTradeRepublicCsv({
+      fileContent: [
+        header,
+        '"2024-09-30T11:39:42.000Z","2024-09-30","DEFAULT","TRADING","BUY","BOND","Aug. 2029","XS2800678224","430.3600000000","1.142500","-500.00","-1.00","","EUR","","","","","b1","","","",""',
+        '"2026-05-14T08:37:50.000Z","2026-05-14","DEFAULT","CASH","INTEREST_PAYMENT","BOND","Aug. 2029","XS2800678224","","","15.600000","","-4.11","EUR","","","","","b2","","","",""',
+        '"2026-08-14T10:10:10.000Z","2026-08-14","DEFAULT","CASH","INTEREST_PAYMENT","BOND","Aug. 2029","XS2800678224","","","15.600000","","-4.11","EUR","","","","","b3","","","",""',
+        '"2026-08-18T20:38:21.000Z","2026-08-18","DEFAULT","CASH","INTEREST_PAYMENT","BOND","Aug. 2029","XS2800678224","","","-15.600000","","4.11","EUR","","","","","b4","","","",""',
+        '"2026-08-20T10:00:00.000Z","2026-08-20","DEFAULT","CASH","INTEREST_PAYMENT","","","","","","2.50","","","EUR","","","","","b5","","","",""'
+      ].join('\n'),
+      userAccounts: []
+    });
+
+    expect(activities).toMatchObject([
+      {
+        comment: 'b1',
+        fee: 1,
+        quantity: 4.3036,
+        type: 'BUY',
+        unitPrice: 114.25
+      },
+      { comment: 'b2', quantity: 1, type: 'INTEREST', unitPrice: 15.6 }
+    ]);
+    expect(activities).toHaveLength(2);
+
+    expect(assetProfiles).toMatchObject([
+      {
+        assetClass: 'FIXED_INCOME',
+        assetSubClass: 'BOND',
+        symbol: 'GF_XS2800678224'
+      }
+    ]);
+  });
 });

@@ -12,7 +12,8 @@ import {
   Type as ActivityType
 } from '@ghostfolio/prisma/enums';
 
-import { isDate, isFinite, isNumber, isString } from 'lodash-es';
+import { Big } from 'big.js';
+import { findLastIndex, isDate, isFinite, isNumber, isString } from 'lodash-es';
 import ms from 'ms';
 import { parse as csvToJson } from 'papaparse';
 
@@ -22,8 +23,12 @@ const ACTIVITY_TYPES: Record<string, ActivityType> = {
   BUY: 'BUY',
   DISTRIBUTION: 'DIVIDEND',
   DIVIDEND: 'DIVIDEND',
+  INTEREST_PAYMENT: 'INTEREST',
   SELL: 'SELL'
 };
+
+// Bonds are quoted in percent of the nominal value, so they are held in units of 100
+const NOMINAL_UNIT = 100;
 
 const ASSET_CLASSES: Record<
   string,
@@ -86,20 +91,45 @@ export function convertTradeRepublicCsv({
   for (const row of rows) {
     const type = ACTIVITY_TYPES[toString(row.type)];
     const isin = toString(row.symbol);
-    const quantity = Math.abs(toNumber(row.shares));
+    const amount = toNumber(row.amount);
+    const symbol = `${ghostfolioPrefix}_${isin}`;
+
+    if (type === 'INTEREST' && amount < 0) {
+      const reversedIndex = findLastIndex(activities, (activity) => {
+        return (
+          activity.symbol === symbol &&
+          activity.type === 'INTEREST' &&
+          Math.abs(activity.unitPrice + amount) < 0.005
+        );
+      });
+
+      if (reversedIndex >= 0) {
+        activities.splice(reversedIndex, 1);
+      }
+
+      continue;
+    }
+
+    const unit =
+      toString(row.asset_class) === 'BOND' && type !== 'INTEREST'
+        ? NOMINAL_UNIT
+        : 1;
+    const quantity =
+      type === 'INTEREST'
+        ? 1
+        : new Big(Math.abs(toNumber(row.shares))).div(unit).toNumber();
 
     if (!type || !isin || !quantity) {
       continue;
     }
 
     const currency = toString(row.currency) || 'EUR';
-    const symbol = `${ghostfolioPrefix}_${isin}`;
 
-    // Dividend rows only contain the total amount
+    // Dividend and interest rows only contain the total amount
     const unitPrice =
-      type === 'DIVIDEND' || !toNumber(row.price)
-        ? Math.abs(toNumber(row.amount)) / quantity
-        : toNumber(row.price);
+      type === 'DIVIDEND' || type === 'INTEREST' || !toNumber(row.price)
+        ? Math.abs(amount) / quantity
+        : new Big(toNumber(row.price)).times(unit).toNumber();
 
     activities.push({
       accountId,
