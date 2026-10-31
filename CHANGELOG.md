@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 3.95.0 - 2026-10-31
+
+### Changed
+
+- Localized the number formatting in the tooltip of the line chart, the investment chart and the benchmark comparator
+- Deprecated the `api/v1/symbol` endpoints in favor of the `api/v1/symbols` endpoints
+- Removed the redundant currency from the activities in the currency of the asset profile
+- Changed the _Redis_ image from `redis:alpine` to `redis:8-alpine` in the `docker-compose` file (`docker-compose.yml`)
+- Upgraded `@internationalized/number` from version `3.6.8` to `3.6.9`
+- Upgraded `countries-and-timezones` from version `3.10.0` to `3.11.0`
+- Upgraded `envalid` from version `8.2.0` to `9.0.0`
+- Upgraded `uuid` from version `14.0.2` to `14.0.3`
+- Upgraded `yahoo-finance2` from version `4.0.2` to `4.0.5`
+
+### Fixed
+
+- Fixed the sign-out logic which deleted all cookies of the origin and did not delete the _Bull Board_ cookie on plain HTTP
+- Fixed the validation of the asset profile in the update activity endpoint
+
 ## 3.94.0 - 2026-10-28
 
 ### Changed

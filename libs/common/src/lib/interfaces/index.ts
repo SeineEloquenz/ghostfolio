@@ -68,6 +68,7 @@ import type {
   DataProviderResponse,
   DataProviderHistoricalResponse
 } from './responses/data-provider-response.interface';
+import type { DeleteOrUpdateActivityResponse } from './responses/delete-or-update-activity-response.interface';
 import type { DividendsResponse } from './responses/dividends-response.interface';
 import type { ResponseError } from './responses/errors.interface';
 import type { ExchangeRateResponse } from './responses/exchange-rate-response.interface';
@@ -90,6 +91,7 @@ import type { PortfolioReportResponse } from './responses/portfolio-report.inter
 import type { PublicPortfolioResponse } from './responses/public-portfolio-response.interface';
 import type { QuotesResponse } from './responses/quotes-response.interface';
 import type { RedeemCouponResponse } from './responses/redeem-coupon-response.interface';
+import type { SymbolResponse } from './responses/symbol-response.interface';
 import type { WatchlistResponse } from './responses/watchlist-response.interface';
 import type { RuleSettings } from './rule-settings.interface';
 import type { ScraperConfiguration } from './scraper-configuration.interface';
@@ -156,6 +158,7 @@ export {
   DataProviderHistoricalResponse,
   DataProviderInfo,
   DataProviderResponse,
+  DeleteOrUpdateActivityResponse,
   DividendsResponse,
   EnhancedAssetProfile,
   ExchangeRateResponse,
@@ -207,6 +210,7 @@ export {
   Statistics,
   SubscriptionOffer,
   SymbolItem,
+  SymbolResponse,
   SystemMessage,
   User,
   UserItem,

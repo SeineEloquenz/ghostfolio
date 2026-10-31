@@ -42,6 +42,7 @@ import {
   CreateActivityResponse,
   CreateStripeCheckoutSessionResponse,
   DataProviderHealthResponse,
+  DeleteOrUpdateActivityResponse,
   ExportResponse,
   Filter,
   ImportResponse,
@@ -60,7 +61,7 @@ import {
   PortfolioReportResponse,
   PublicPortfolioResponse,
   RedeemCouponResponse,
-  SymbolItem,
+  SymbolResponse,
   User,
   UserItem,
   WatchlistResponse
@@ -75,7 +76,6 @@ import type {
 import type {
   Account,
   MarketData,
-  Order,
   SymbolProfile,
   Tag,
   User as UserModel
@@ -353,7 +353,9 @@ export class DataService {
   }
 
   public deleteActivity(aId: string) {
-    return this.http.delete<Order>(`/api/v1/activities/${aId}`);
+    return this.http.delete<DeleteOrUpdateActivityResponse>(
+      `/api/v1/activities/${aId}`
+    );
   }
 
   public deleteBenchmark({ dataSource, symbol }: AssetProfileIdentifier) {
@@ -826,8 +828,8 @@ export class DataService {
       params = params.append('includeHistoricalData', includeHistoricalData);
     }
 
-    return this.http.get<SymbolItem>(
-      `/api/v1/symbol/${dataSource}/${encodeURIComponent(symbol)}`,
+    return this.http.get<SymbolResponse>(
+      `/api/v1/symbols/${dataSource}/${encodeURIComponent(symbol)}`,
       {
         params
       }
@@ -848,7 +850,7 @@ export class DataService {
     }
 
     return this.http
-      .get<LookupResponse>('/api/v1/symbol/lookup', { params })
+      .get<LookupResponse>('/api/v1/symbols/lookup', { params })
       .pipe(
         map(({ items }) => {
           return items;
@@ -952,7 +954,10 @@ export class DataService {
   }
 
   public putActivity(aOrder: UpdateOrderDto) {
-    return this.http.put<UserItem>(`/api/v1/activities/${aOrder.id}`, aOrder);
+    return this.http.put<DeleteOrUpdateActivityResponse>(
+      `/api/v1/activities/${aOrder.id}`,
+      aOrder
+    );
   }
 
   public putAdminSetting(key: string, aData: UpdatePropertyDto) {

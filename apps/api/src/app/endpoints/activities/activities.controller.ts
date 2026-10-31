@@ -6,18 +6,24 @@ import { isDataGatheringSupported } from '@ghostfolio/api/helper/data-source.hel
 import { RedactValuesInResponseInterceptor } from '@ghostfolio/api/interceptors/redact-values-in-response/redact-values-in-response.interceptor';
 import { TransformDataSourceInRequestInterceptor } from '@ghostfolio/api/interceptors/transform-data-source-in-request/transform-data-source-in-request.interceptor';
 import { TransformDataSourceInResponseInterceptor } from '@ghostfolio/api/interceptors/transform-data-source-in-response/transform-data-source-in-response.interceptor';
+import { ActivitiesService } from '@ghostfolio/api/services/activities/activities.service';
 import { ApiService } from '@ghostfolio/api/services/api/api.service';
 import { DataProviderService } from '@ghostfolio/api/services/data-provider/data-provider.service';
 import { DataGatheringService } from '@ghostfolio/api/services/queues/data-gathering/data-gathering.service';
 import { SymbolProfileService } from '@ghostfolio/api/services/symbol-profile/symbol-profile.service';
 import { getIntervalFromDateRange } from '@ghostfolio/common/calculation-helper';
-import { DATA_GATHERING_QUEUE_PRIORITY_HIGH } from '@ghostfolio/common/config';
+import {
+  DATA_GATHERING_QUEUE_PRIORITY_HIGH,
+  NON_INVESTMENT_ACTIVITY_TYPES
+} from '@ghostfolio/common/config';
 import { CreateOrderDto, UpdateOrderDto } from '@ghostfolio/common/dtos';
 import { SubscriptionType } from '@ghostfolio/common/enums';
+import { getAssetProfileIdentifier } from '@ghostfolio/common/helper';
 import {
   ActivitiesResponse,
   ActivityResponse,
-  CreateActivityResponse
+  CreateActivityResponse,
+  DeleteOrUpdateActivityResponse
 } from '@ghostfolio/common/interfaces';
 import { permissions } from '@ghostfolio/common/permissions';
 import { scopes } from '@ghostfolio/common/scopes';
@@ -38,10 +44,9 @@ import {
 import { Order } from '@prisma/client';
 import { parseISO } from 'date-fns';
 import { StatusCodes, getReasonPhrase } from 'http-status-codes';
-import { omit } from 'lodash-es';
+import { omit, pick } from 'lodash-es';
 
 import { ActivitiesFilterDto } from './activities-filter.dto';
-import { ActivitiesService } from './activities.service';
 import { GetActivitiesDto } from './get-activities.dto';
 
 @Controller('activities')
@@ -104,7 +109,7 @@ export class ActivitiesController {
   public async deleteActivity(
     @Impersonation() { userId }: ImpersonationContext,
     @Param('id') id: string
-  ): Promise<Order> {
+  ): Promise<DeleteOrUpdateActivityResponse> {
     const activity = await this.activitiesService.order({
       id,
       userId
@@ -117,9 +122,11 @@ export class ActivitiesController {
       );
     }
 
-    return this.activitiesService.deleteActivity({
+    const deletedActivity = await this.activitiesService.deleteActivity({
       id
     });
+
+    return this.getDeleteOrUpdateActivityResponse(deletedActivity);
   }
 
   @Get()
@@ -223,40 +230,20 @@ export class ActivitiesController {
       userSubscription
     }: ImpersonationContext
   ): Promise<CreateActivityResponse> {
-    // Evaluate the more restrictive subscription of the authenticated user
-    // and the owner of the activity
-    const subscription =
-      userSubscription?.type === SubscriptionType.Basic
-        ? userSubscription
-        : authenticatedUserSubscription;
+    const assetProfiles = await this.validateActivity({
+      authenticatedUserSubscription,
+      userId,
+      userSubscription,
+      activityDto: data
+    });
 
-    try {
-      await this.dataProviderService.validateActivities({
-        subscription,
-        userId,
-        activitiesDto: [
-          {
-            currency: data.currency,
-            dataSource: data.dataSource,
-            symbol: data.symbol,
-            type: data.type
-          }
-        ],
-        maxActivitiesToImport: 1
-      });
-    } catch (error) {
-      throw new HttpException(
-        {
-          error: getReasonPhrase(StatusCodes.BAD_REQUEST),
-          message: [error.message]
-        },
-        StatusCodes.BAD_REQUEST
-      );
-    }
-
-    const currency = data.currency;
     const customCurrency = data.customCurrency;
     const dataSource = data.dataSource;
+
+    const currency =
+      assetProfiles[
+        getAssetProfileIdentifier({ dataSource, symbol: data.symbol })
+      ]?.currency ?? data.currency;
 
     if (customCurrency) {
       data.currency = customCurrency;
@@ -326,9 +313,14 @@ export class ActivitiesController {
   @UseInterceptors(TransformDataSourceInRequestInterceptor)
   public async updateActivity(
     @Body() data: UpdateOrderDto,
-    @Impersonation() { userId }: ImpersonationContext,
+    @Impersonation()
+    {
+      authenticatedUserSubscription,
+      userId,
+      userSubscription
+    }: ImpersonationContext,
     @Param('id') id: string
-  ) {
+  ): Promise<DeleteOrUpdateActivityResponse> {
     const originalActivity = await this.activitiesService.order({
       id,
       userId
@@ -339,6 +331,29 @@ export class ActivitiesController {
         getReasonPhrase(StatusCodes.NOT_FOUND),
         StatusCodes.NOT_FOUND
       );
+    }
+
+    const isAssetProfileConnected =
+      !NON_INVESTMENT_ACTIVITY_TYPES.includes(data.type) &&
+      !(data.dataSource === 'MANUAL' && data.type === 'BUY');
+
+    if (isAssetProfileConnected) {
+      const [originalAssetProfile] =
+        await this.symbolProfileService.getSymbolProfilesByIds([
+          originalActivity.symbolProfileId
+        ]);
+
+      if (
+        originalAssetProfile.dataSource !== data.dataSource ||
+        originalAssetProfile.symbol !== data.symbol
+      ) {
+        await this.validateActivity({
+          authenticatedUserSubscription,
+          userId,
+          userSubscription,
+          activityDto: data
+        });
+      }
     }
 
     const date = parseISO(data.date);
@@ -357,7 +372,7 @@ export class ActivitiesController {
 
     delete data.dataSource;
 
-    return this.activitiesService.updateActivity({
+    const activity = await this.activitiesService.updateActivity({
       userId,
       data: {
         ...data,
@@ -392,5 +407,67 @@ export class ActivitiesController {
         id
       }
     });
+
+    return this.getDeleteOrUpdateActivityResponse(activity);
+  }
+
+  private getDeleteOrUpdateActivityResponse(
+    activity: Order
+  ): DeleteOrUpdateActivityResponse {
+    return pick(activity, [
+      'accountId',
+      'accountUserId',
+      'comment',
+      'createdAt',
+      'currency',
+      'date',
+      'fee',
+      'id',
+      'quantity',
+      'symbolProfileId',
+      'type',
+      'unitPrice',
+      'updatedAt',
+      'userId'
+    ]);
+  }
+
+  private async validateActivity({
+    activityDto: { currency, dataSource, symbol, type },
+    authenticatedUserSubscription,
+    userId,
+    userSubscription
+  }: Pick<
+    ImpersonationContext,
+    'authenticatedUserSubscription' | 'userId' | 'userSubscription'
+  > & {
+    activityDto: Pick<
+      CreateOrderDto,
+      'currency' | 'dataSource' | 'symbol' | 'type'
+    >;
+  }) {
+    // Evaluate the more restrictive subscription of the authenticated user
+    // and the owner of the activity
+    const subscription =
+      userSubscription?.type === SubscriptionType.Basic
+        ? userSubscription
+        : authenticatedUserSubscription;
+
+    try {
+      return await this.dataProviderService.validateActivities({
+        subscription,
+        userId,
+        activitiesDto: [{ currency, dataSource, symbol, type }],
+        maxActivitiesToImport: 1
+      });
+    } catch (error) {
+      throw new HttpException(
+        {
+          error: getReasonPhrase(StatusCodes.BAD_REQUEST),
+          message: [error.message]
+        },
+        StatusCodes.BAD_REQUEST
+      );
+    }
   }
 }

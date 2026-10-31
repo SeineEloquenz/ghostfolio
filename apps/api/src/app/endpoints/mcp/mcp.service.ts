@@ -1,5 +1,3 @@
-import { SymbolService } from '@ghostfolio/api/app/symbol/symbol.service';
-import { UserService } from '@ghostfolio/api/app/user/user.service';
 import { CallerFacingError } from '@ghostfolio/api/errors/caller-facing.error';
 import {
   transformDataSourceInRequest,
@@ -12,6 +10,8 @@ import { ConfigurationService } from '@ghostfolio/api/services/configuration/con
 import { ImportService } from '@ghostfolio/api/services/import/import.service';
 import { PortfolioTableService } from '@ghostfolio/api/services/portfolio-table/portfolio-table.service';
 import { SymbolProfileService } from '@ghostfolio/api/services/symbol-profile/symbol-profile.service';
+import { SymbolService } from '@ghostfolio/api/services/symbol/symbol.service';
+import { UserService } from '@ghostfolio/api/services/user/user.service';
 import { getIntervalFromDateRange } from '@ghostfolio/common/calculation-helper';
 import { DEFAULT_LANGUAGE_CODE } from '@ghostfolio/common/config';
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
