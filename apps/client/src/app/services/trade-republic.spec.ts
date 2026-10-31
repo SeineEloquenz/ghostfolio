@@ -71,7 +71,13 @@ describe('TradeRepublic', () => {
         name: 'Apple',
         symbol: 'GF_US0378331005'
       },
-      { assetSubClass: 'ETF', symbol: 'GF_IE00B4L5Y983' }
+      {
+        assetSubClass: 'ETF',
+        scraperConfiguration: {
+          url: 'https://api.boerse-frankfurt.de/v1/data/quote_box/single?isin=IE00B4L5Y983&mic=XETR'
+        },
+        symbol: 'GF_IE00B4L5Y983'
+      }
     ]);
   });
 
@@ -181,6 +187,10 @@ describe('TradeRepublic', () => {
       {
         assetClass: 'FIXED_INCOME',
         assetSubClass: 'BOND',
+        scraperConfiguration: {
+          selector: '$.lastPrice',
+          url: 'https://api.boerse-frankfurt.de/v1/data/quote_box/single?isin=XS2800678224&mic=XFRA'
+        },
         symbol: 'GF_XS2800678224'
       }
     ]);

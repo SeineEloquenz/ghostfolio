@@ -16,6 +16,7 @@ import {
   IsBoolean,
   IsEnum,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUrl,
@@ -26,6 +27,7 @@ import { isString } from 'lodash-es';
 
 import { CountryDto } from './country.dto';
 import { HoldingDto } from './holding.dto';
+import { ScraperConfigurationDto } from './scraper-configuration.dto';
 import { SectorDto } from './sector.dto';
 
 export class CreateAssetProfileDto {
@@ -87,6 +89,12 @@ export class CreateAssetProfileDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @IsObject()
+  @IsOptional()
+  @Type(() => ScraperConfigurationDto)
+  @ValidateNested()
+  scraperConfiguration?: Prisma.InputJsonObject;
 
   @IsArray()
   @IsOptional()

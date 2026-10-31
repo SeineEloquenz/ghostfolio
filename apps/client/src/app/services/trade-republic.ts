@@ -158,6 +158,10 @@ export function convertTradeRepublicCsv({
         isActive: true,
         marketData: [],
         name: toString(row.name) || isin,
+        scraperConfiguration: getScraperConfiguration({
+          isin,
+          assetClass: toString(row.asset_class)
+        }),
         sectors: []
       });
     }
@@ -231,6 +235,23 @@ export function reconcileTradeRepublicActivities({
         toDate(activity.date).getTime() > latestDuplicateDate
       );
     });
+}
+
+// Bonds are not traded on Xetra, their price per 100 nominal matches NOMINAL_UNIT
+function getScraperConfiguration({
+  assetClass,
+  isin
+}: {
+  assetClass: string;
+  isin: string;
+}) {
+  const mic = assetClass === 'BOND' ? 'XFRA' : 'XETR';
+
+  return {
+    mode: 'lazy',
+    selector: '$.lastPrice',
+    url: `https://api.boerse-frankfurt.de/v1/data/quote_box/single?isin=${isin}&mic=${mic}`
+  };
 }
 
 function isSameTradeRepublicActivity(existing: Activity, activity: Activity) {

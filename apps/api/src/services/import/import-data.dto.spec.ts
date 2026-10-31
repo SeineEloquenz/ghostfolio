@@ -32,6 +32,34 @@ describe('ImportDataDto', () => {
     ).resolves.toBeInstanceOf(ImportDataDto);
   });
 
+  it('accepts an asset profile with a scraper configuration', async () => {
+    const importData = loadImportData('ok', 'sample.json');
+
+    const dto = await validationPipe.transform(
+      {
+        ...importData,
+        assetProfiles: [
+          {
+            currency: 'EUR',
+            dataSource: DataSource.MANUAL,
+            marketData: [],
+            scraperConfiguration: {
+              mode: 'lazy',
+              selector: '$.lastPrice',
+              url: 'https://api.boerse-frankfurt.de/v1/data/quote_box/single?isin=IE00B4L5Y983&mic=XETR'
+            },
+            symbol: 'GF_IE00B4L5Y983'
+          }
+        ]
+      },
+      { metatype: ImportDataDto, type: 'body' }
+    );
+
+    expect(dto.assetProfiles[0].scraperConfiguration).toMatchObject({
+      selector: '$.lastPrice'
+    });
+  });
+
   it.each([
     {
       fileName: 'invalid-data-source.json',
