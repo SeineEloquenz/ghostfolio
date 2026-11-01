@@ -193,17 +193,18 @@ export class DataGatheringService {
           update: {
             assetClass,
             assetSubClass,
-            countries,
             currency,
             cusip,
             figi,
             figiComposite,
             figiShareClass,
-            holdings,
             isin,
             name,
-            sectors,
-            url
+            url,
+            // Keep the stored data if no list is available
+            countries: isEmpty(countries) ? undefined : countries,
+            holdings: isEmpty(holdings) ? undefined : holdings,
+            sectors: isEmpty(sectors) ? undefined : sectors
           },
           where: {
             dataSource_symbol: {
